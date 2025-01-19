@@ -19,8 +19,8 @@ tf.get_logger().setLevel('ERROR')
 tf.autograph.set_verbosity(3)
 
 import numpy as np
-from fawkes.differentiator import FawkesMaskGeneration
-from fawkes.utils import init_gpu, dump_image, reverse_process_cloaked, \
+from differentiator import FawkesMaskGeneration
+from utils import init_gpu, dump_image, reverse_process_cloaked, \
     Faces, filter_image_paths, load_extractor
 
 from fawkes.align_face import aligner

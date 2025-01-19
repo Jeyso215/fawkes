@@ -319,12 +319,17 @@ def preprocess(X, method):
 
 
 def reverse_preprocess(X, method):
-    assert method in {'raw', 'imagenet', 'inception', 'mnist'}
+    assert method in {'raw', 'imagenet', 'inception', 'mnist', 'resnet_arcface'}
 
     if method == 'raw':
         pass
     elif method == 'imagenet':
         X = imagenet_reverse_preprocessing(X)
+    elif method == 'resnet_arcface':
+        # print(np.max(X), np.min(X))
+        # X =  + 127.5
+        # print(np.max(X), np.min(X))
+        pass
     else:
         raise Exception('unknown method %s' % method)
 

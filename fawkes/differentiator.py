@@ -5,12 +5,32 @@
 
 import datetime
 import time
+import cv2
+
+
 
 import numpy as np
 import tensorflow as tf
-from fawkes.utils import preprocess, reverse_preprocess
+from utils import preprocess, reverse_preprocess
 from keras.utils import Progbar
 
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float('inf')
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
+    
 
 class FawkesMaskGeneration:
     # if the attack is trying to mimic a target image or a neuron vector
@@ -41,9 +61,9 @@ class FawkesMaskGeneration:
                  intensity_range=INTENSITY_RANGE, l_threshold=L_THRESHOLD,
                  max_val=MAX_VAL, keep_final=KEEP_FINAL, maximize=MAXIMIZE, image_shape=IMAGE_SHAPE, verbose=1,
                  ratio=RATIO, limit_dist=LIMIT_DIST, loss_method=LOSS_TYPE, tanh_process=True,
-                 save_last_on_failed=True):
+                 save_last_on_failed=True, input_preprocesing=None):
 
-        assert intensity_range in {'raw', 'imagenet', 'inception', 'mnist'}
+        assert intensity_range in {'raw', 'imagenet', 'inception', 'mnist', 'resnet_arcface'}
 
         # constant used for tanh transformation to avoid corner cases
 
@@ -68,7 +88,9 @@ class FawkesMaskGeneration:
         self.bottleneck_models = bottleneck_model_ls
         self.loss_method = loss_method
         self.tanh_process = tanh_process
-
+        self.input_preprocesing = input_preprocesing
+        self.early_stopper = EarlyStopper(patience=5, min_delta=0.001)
+    
     @staticmethod
     def resize_tensor(input_tensor, model_input_shape):
         if input_tensor.shape[1:] == model_input_shape or model_input_shape[1] is None:
@@ -93,6 +115,10 @@ class FawkesMaskGeneration:
         if self.intensity_range == 'imagenet':
             mean = np.repeat([[[[103.939, 116.779, 123.68]]]], len(img), axis=0)
             raw_img = (img[..., ::-1] - mean)
+        elif self.input_preprocesing == 'resnet_arcface':
+            # raw_img = (img - 127.5) * 0.0078125
+            # print("inp", np.max(raw_img), np.min(raw_img))
+            raw_img = img
         else:
             raw_img = img
         return raw_img
@@ -114,13 +140,18 @@ class FawkesMaskGeneration:
 
     def calc_bottlesim(self, tape, source_raw, target_raw, original_raw):
         """ original Fawkes loss function. """
+        STOP = False
         bottlesim = 0.0
         bottlesim_sum = 0.0
         # make sure everything is the right size.
         model_input_shape = self.single_shape
         cur_aimg_input = self.resize_tensor(source_raw, model_input_shape)
+        if self.input_preprocesing == 'resnet_arcface':
+            cur_aimg_input = (cur_aimg_input - 127.5) * 0.0078125
         if target_raw is not None:
             cur_timg_input = self.resize_tensor(target_raw, model_input_shape)
+            if self.input_preprocesing == 'resnet_arcface':
+                cur_timg_input = (cur_timg_input - 127.5) * 0.0078125
         for bottleneck_model in self.bottleneck_models:
             if tape is not None:
                 try:
@@ -128,36 +159,60 @@ class FawkesMaskGeneration:
                 except AttributeError:
                     tape.watch(bottleneck_model.variables)
             # get the respective feature space reprs.
+            # aimg_input, timg_input, simg_input = source, target, original 
+            ## investigating image format
+            # cur_aimg_input_np = cur_aimg_input.numpy()[0, :, :, :]
+            # cv2.imshow("Img", cur_aimg_input_np / 255)
+            # cv2.waitKey(0)
             bottleneck_a = bottleneck_model(cur_aimg_input)
+            if self.input_preprocesing == 'resnet_arcface':
+                bottleneck_a = bottleneck_a / np.linalg.norm(bottleneck_a, axis=1, keepdims=True)
             if self.maximize:
                 bottleneck_s = bottleneck_model(original_raw)
+                if self.input_preprocesing == 'resnet_arcface':
+                    bottleneck_s = bottleneck_s / np.linalg.norm(bottleneck_s, axis=1, keepdims=True)
                 bottleneck_diff = bottleneck_a - bottleneck_s
                 scale_factor = tf.sqrt(tf.reduce_sum(tf.square(bottleneck_s), axis=1))
             else:
                 bottleneck_t = bottleneck_model(cur_timg_input)
-                bottleneck_diff = bottleneck_t - bottleneck_a
-                scale_factor = tf.sqrt(tf.reduce_sum(tf.square(bottleneck_t), axis=1))
+                if self.input_preprocesing == 'resnet_arcface':
+                    bottleneck_t = bottleneck_t / np.linalg.norm(bottleneck_t, axis=1, keepdims=True)
+                    bottleneck_diff = tf.math.acos(tf.tensordot(bottleneck_t, tf.transpose(bottleneck_a), axes=1))
+                    if self.it == 1:
+                        print("Starting bottleneck diff", bottleneck_diff)
+                    if bottleneck_diff < 1.21:
+                        print("Below threshold at", self.it, bottleneck_diff)
+                        STOP = True
+                    elif self.early_stopper.early_stop(bottleneck_diff):   
+                        print("Early stopping at iteration", self.it)        
+                        STOP = True  
+                    # print("Bottleneck diff", bottleneck_diff)
+                    scale_factor = 10 # make more similar in scake to the original Fawkes diff loss, otherwise DSSIM loss is completely overpowered
+                else:
+                    bottleneck_diff = bottleneck_t - bottleneck_a
+                    scale_factor = tf.sqrt(tf.reduce_sum(tf.square(bottleneck_t), axis=1))
             cur_bottlesim = tf.reduce_sum(tf.square(bottleneck_diff), axis=1)
             cur_bottlesim = cur_bottlesim / scale_factor
             bottlesim += cur_bottlesim
             bottlesim_sum += tf.reduce_sum(cur_bottlesim)
-        return bottlesim, bottlesim_sum
+        return bottlesim, bottlesim_sum, STOP
 
     def compute_feature_loss(self, tape, aimg_raw, simg_raw, aimg_input, timg_input, simg_input):
         """ Compute input space + feature space loss.
         """
         input_space_loss, dist_raw, input_space_loss_sum, input_space_loss_raw_avg = self.calc_dissim(aimg_raw,
                                                                                                       simg_raw)
-        feature_space_loss, feature_space_loss_sum = self.calc_bottlesim(tape, aimg_input, timg_input, simg_input)
+        feature_space_loss, feature_space_loss_sum, STOP = self.calc_bottlesim(tape, aimg_input, timg_input, simg_input)
 
         if self.maximize:
             loss = self.const * tf.square(input_space_loss) - feature_space_loss * self.const_diff
         else:
-            if self.it < self.MAX_ITERATIONS:
+            if self.it <= self.MAX_ITERATIONS:
                 loss = self.const * tf.square(input_space_loss) + 1000 * feature_space_loss
 
         loss_sum = tf.reduce_sum(loss)
-        return loss_sum, feature_space_loss, input_space_loss_raw_avg, dist_raw
+        return loss_sum, feature_space_loss, input_space_loss_raw_avg, dist_raw, STOP
+       
 
     def compute(self, source_imgs, target_imgs=None):
         """ Main function that runs cloak generation. """
@@ -195,7 +250,7 @@ class FawkesMaskGeneration:
                                     dtype=tf.float32)
 
         # make the optimizer
-        optimizer = tf.keras.optimizers.Adadelta(float(self.learning_rate))
+        optimizer = tf.keras.optimizers.legacy.Adadelta(float(self.learning_rate))
         const_numpy = np.ones(len(source_imgs)) * self.initial_const
         self.const = tf.Variable(const_numpy, dtype=np.float32)
 
@@ -241,8 +296,15 @@ class FawkesMaskGeneration:
                 simg_input = self.input_space_process(simg_raw)
 
                 # get the feature space loss.
-                loss, internal_dist, input_dist_avg, dist_raw = self.compute_feature_loss(
+                loss, internal_dist, input_dist_avg, dist_raw, STOP = self.compute_feature_loss(
                     tape, aimg_raw, simg_raw, aimg_input, timg_input, simg_input)
+                if STOP:
+                    break
+                # Notes:
+                # aimg_input, timg_input, simg_input = source, target, original 
+                # loss, internal_dist, input_dist_avg, dist_raw = loss_sum, feature_space_loss, input_space_loss_raw_avg, dist_raw
+                # feature_space loss =  embeddings, input_space loss = dissim relative to threshold, dist_raw = dissim
+
 
                 # compute gradients
                 grad = tape.gradient(loss, [self.modifier])
@@ -281,8 +343,8 @@ class FawkesMaskGeneration:
             self.const_diff = tf.Variable(const_diff_numpy, dtype=np.float32)
 
             if self.verbose == 1:
-                print("ITER {:0.2f}  Total Loss: {:.2f} {:0.4f} raw; diff: {:.4f}".format(self.it, loss, input_dist_avg,
-                                                                                          np.mean(internal_dist)))
+                print("ITER {:0.2f} Total Loss: {:.2f} DSSIM Loss: {:0.4f} Emb. Loss: {:.4f}".format(self.it, loss, input_dist_avg,
+                                                                                                                    np.mean(internal_dist)))
 
             if self.verbose == 0:
                 progressbar.update(self.it)
