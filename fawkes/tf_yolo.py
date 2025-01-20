@@ -34,9 +34,9 @@ except:
     pass
 
 import tensorflow as tf
-gpus = tf.config.experimental.list_physical_devices("GPU")
-for gpu in gpus:
-    tf.config.experimental.set_memory_growth(gpu, True)
+gpus = tf.config.experimental.list_physical_devices("CPU")
+# for gpu in gpus:
+#     tf.config.experimental.set_memory_growth(gpu, True)
 
 FILE_HASH = {"yolov5s_face_dynamic": "e7854a5cae48ded05b3b31aa93765f0d"}
 
@@ -183,7 +183,7 @@ class YoloV5FaceDetector(BaseDetector):
             post_outputs.append(tf.reshape(post_out, [-1, output.shape[1] * output.shape[2], anchor_width - 1]))
         return tf.concat(post_outputs, axis=1)
 
-    def yolo_nms(self, inputs, max_output_size=15, iou_threshold=0.35, score_threshold=0.25):
+    def yolo_nms(self, inputs, max_output_size=15, iou_threshold=0.35, score_threshold=0.25, numpy=True):
         inputs = inputs[0][inputs[0, :, -1] > score_threshold]
         xy_center, wh, ppt, cct = inputs[:, :2], inputs[:, 2:4], inputs[:, 4:14], inputs[:, 14]
         xy_start = xy_center - wh / 2
@@ -192,14 +192,18 @@ class YoloV5FaceDetector(BaseDetector):
         rr = tf.image.non_max_suppression(bbt, cct, max_output_size=max_output_size, iou_threshold=iou_threshold, score_threshold=0.0)
         bbs, pps, ccs = tf.gather(bbt, rr, axis=0), tf.gather(ppt, rr, axis=0), tf.gather(cct, rr, axis=0)
         pps = tf.reshape(pps, [-1, 5, 2])
-        return bbs.numpy(), pps.numpy(), ccs.numpy()
+        if numpy:
+            return bbs.numpy(), pps.numpy(), ccs.numpy()
+        else:
+            return bbs, pps, ccs
 
-    def __call__(self, image, max_output_size=15, iou_threshold=0.45, score_threshold=0.25, image_format="RGB"):
+    def __call__(self, image, max_output_size=15, iou_threshold=0.45, score_threshold=0.25, image_format="RGB", 
+                 numpy=True):
         imm_RGB = image if image_format == "RGB" else image[:, :, ::-1]
         imm_RGB = self.pre_process_32(imm_RGB)
         outputs = self.model(imm_RGB)
         post_outputs = self.post_process(outputs, imm_RGB.shape[1], imm_RGB.shape[2])
-        return self.yolo_nms(post_outputs, max_output_size, iou_threshold, score_threshold)
+        return self.yolo_nms(post_outputs, max_output_size, iou_threshold, score_threshold, numpy=numpy)
 
 
 class SCRFD(BaseDetector):

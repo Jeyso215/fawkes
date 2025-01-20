@@ -25,62 +25,57 @@ tf.get_logger().setLevel('ERROR')
 tf.autograph.set_verbosity(3)
 
 import numpy as np
-from differentiator import FawkesMaskGeneration
+from differentiation_w_facedet import FawkesMaskGeneration
 from utils import init_gpu, dump_image, reverse_process_cloaked, \
     Faces, load_image, load_extractor
 
 from fawkes.align_face import aligner
 
 
-
+# from differntiator.py
+def resize_tensor(input_tensor, model_input_shape):
+    if input_tensor.shape[1:] == model_input_shape or model_input_shape[1] is None:
+        return input_tensor
+    resized_tensor = tf.image.resize(input_tensor, model_input_shape[:2])
+    return resized_tensor
 
 def generate_cloak_images(protector, image_X, target_emb=None):
     cloaked_image_X = protector.compute(image_X, target_emb)
     return cloaked_image_X
 
 
-IMG_SIZE = 112
+IMG_SIZE = 300
 PREPROCESS = 'raw'
 INPUT_PREPROCESS = 'resnet_arcface'
 
     
-class YoloFaces(object):
-    def __init__(self):
-        self.original_images = []
-        self.cropped_faces = []
-        self.bbs = []
-        self.cropped_cloaks = []
-    def merge_faces(self):
-        cloaked_images = []
-        for i in range(len(self.cropped_cloaks)):
-            bbox = self.bbs[i]
-            x1, y1, x2, y2 = bbox.astype(int)
-            width = x2 - x1
-            height = y2 - y1
-            og_img = self.original_images[i]    
-            cloaked_img = self.cropped_cloaks[i]
-            # cloaked_img = cloaked_img.astype(np.uint8)
-            # cloaked_img = cv2.cvtColor(cloaked_img, cv2.COLOR_BGR2RGB)
-            # print("cloaked shape: ", cloaked_img.shape)
-            # cv2.imshow("cloaked", cloaked_img)
-            # cv2.waitKey(0)
-            cloaked_img = cv2.resize(cloaked_img, (width, height))
-            # cv2.imshow("Face", og_img)
-            # cv2.waitKey(0)
-            # cv2.imshow("Cloaked Face", cloaked_faces[i])
-            # cv2.waitKey(0)
-            og_img[y1:y2, x1:x2] = cloaked_img
-            print(np.max(og_img), np.min(og_img), np.max(cloaked_img), np.min(cloaked_img))
-            # og_img = cv2.cvtColor(og_img, cv2.COLOR_BGR2RGB)
-            cloaked_images.append(og_img)
+class DetRecModel(object):
+    """
+    Only works with one image
+    """
+    def __init__(self, det_model, rec_model):
+        self.det_model = det_model
+        self.rec_model = rec_model
 
-        return cloaked_images
+    def predict(self, imgs):
+        imgs = imgs[0, :, :, :]
+        bbs, pps, ccs = self.det_model(imgs, numpy=False) # should be RGB
+        bbs = bbs[0]
+        x1, y1, x2, y2 = bbs
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        cropped = imgs[y1:y2, x1:x2]
+        cropped = (cropped - 127.5) * 0.0078125
+        cropped = resize_tensor(cropped, (112, 112, 3))
+        cropped = tf.expand_dims(cropped, axis=0) # add batch dimension
+        embeds = self.rec_model(cropped)
+        return embeds
 
-    
+    def __call__(self, x):
+        return self.predict(x)
+
 
 class Fawkes(object):
-    def __init__(self, feature_extractor, gpu, batch_size, mode="custom", th = None, max_step = None, lr = None,
-                 aligner_type = "Yolo"):
+    def __init__(self, feature_extractor, gpu, batch_size, mode="custom", th = None, max_step = None, lr = None):
 
         self.feature_extractor = feature_extractor
         self.gpu = gpu
@@ -98,76 +93,15 @@ class Fawkes(object):
         if gpu is not None:
             init_gpu(gpu)
 
-        self.aligner_type = aligner_type
-        if aligner_type == "Yolo":
-            self.yolo_detector = YoloV5FaceDetector()
-        self.aligner = aligner()
 
         self.protector = None
         self.protector_param = None
         self.feature_extractors_ls = []
-        for name in extractors:
-            if name == "resnet_arcface":
-                # model = buildin_models("ResNet101V2", dropout=0.4, emb_shape=512, output_layer="E")
-                model = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
-                self.feature_extractors_ls.append(model)
-            else:
-                self.feature_extractors_ls.append(load_extractor(name))
-
-    def mode2param(self, mode):
-        if mode == 'low':
-            th = 0.004
-            max_step = 40
-            lr = 25
-            extractors = ["extractor_2"]
-
-        elif mode == 'mid':
-            th = 0.012
-            max_step = 75
-            lr = 20
-            extractors = ["extractor_0", "extractor_2"]
-
-        elif mode == 'high':
-            th = 0.017
-            max_step = 150
-            lr = 15
-            extractors = ["extractor_0", "extractor_2"]
-
-        else:
-            raise Exception("mode must be one of 'min', 'low', 'mid', 'high'")
-        return th, max_step, lr, extractors
-    
-    def get_crop_align_face(self, img_path, no_align=False):
-        if self.aligner_type == "Yolo":
-            face_obj = YoloFaces()
-            img = cv2.imread(img_path)
-            bbs, _, ccs, nimgs = self.yolo_detector.detect_in_image(img, image_format="BGR")
-            x1, y1, x2, y2 = bbs[0].astype(int)
-            # print(x1-x2, y1-y2, nimgs[0].shape)
-            # cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            # cv2.imshow("Face", img)
-            # cv2.waitKey(0)
-            my_cropped = img[y1:y2, x1:x2]
-            my_cropped = cv2.resize(my_cropped, (112, 112))
-            my_cropped = cv2.cvtColor(my_cropped, cv2.COLOR_BGR2RGB) # model expects RGB
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            # cv2.imshow("Face", my_cropped)
-            # cv2.waitKey(0)
-            # print(my_cropped.shape)
-            # resize
-            face_obj.cropped_faces = [my_cropped]
-            face_obj.bbs = bbs
-            face_obj.original_images = [img] 
-            return face_obj
-        else:
-            img = load_image(img_path)
-            image_paths = [img_path]
-            loaded_images = [img]
-            faces = Faces(image_paths, loaded_images, self.aligner, verbose=1, no_align=no_align)
-            return faces
-    
-
-
+        det_model = YoloV5FaceDetector()
+        rec_model = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
+        det_rec_model = DetRecModel(det_model, rec_model)
+        self.feature_extractors_ls.append(det_rec_model)
+          
     def run_protection(self, img_path, target_img_path, th=0.04, sd=1e7, lr=10, max_step=500, batch_size=1, format='png',
                        separate_target=True, debug=False, no_align=False, exp="", maximize=False,
                        save_last_on_failed=True):
@@ -175,30 +109,16 @@ class Fawkes(object):
         current_param = "-".join([str(x) for x in [self.th, sd, self.lr, self.max_step, batch_size, format,
                                                    separate_target, debug]])
         
-        original_faces = self.get_crop_align_face(img_path, no_align=no_align)
-        original_images = original_faces.cropped_faces
-        if len(original_images) == 0:
-            print("No face detected. ")
-            return 2
-        if len(original_images) > 1:
-            print("More than one face detected. ")
-            return 2
-        # cv2.imshow("Face", original_images[0][:, :, ::-1])
-        # cv2.waitKey(0)
-        original_images = np.array(original_images)
-     
+        original_img = cv2.imread(img_path)
+        original_img = cv2.cvtColor(original_img, cv2.COLOR_BGR2RGB)
+        target_img = cv2.imread(target_img_path)
+        target_img = cv2.cvtColor(target_img, cv2.COLOR_BGR2RGB)
 
-        target_faces = self.get_crop_align_face(target_img_path, no_align=no_align)
-        target_images = target_faces.cropped_faces
-        if len(target_images) == 0:
-            print("No target face detected. ")
-            return 2
-        if len(target_images) > 1:
-            print("More than one target face detected. ")
-            return 2
-        # cv2.imshow("Face", target_images[0][:, :, ::-1])
-        # cv2.waitKey(0)
-        target_images = np.array(target_images)
+        original_img = cv2.resize(original_img, (IMG_SIZE, IMG_SIZE))
+        target_img = cv2.resize(target_img, (IMG_SIZE, IMG_SIZE))
+
+        original_images = np.array([original_img])
+        target_images = np.array([target_img])
 
         if current_param != self.protector_param:
             self.protector_param = current_param
@@ -227,20 +147,20 @@ class Fawkes(object):
 
 
         
-        if self.aligner_type == "Yolo":
-            original_faces.cropped_cloaks = protected_images.astype(np.uint8)
-            final_images = original_faces.merge_faces()
-            p_img = final_images[0]
-        else:
-            original_faces.cloaked_cropped_faces = protected_images
-            final_images, images_without_face = original_faces.merge_faces(
-                reverse_process_cloaked(protected_images, preprocess=PREPROCESS),
-                reverse_process_cloaked(original_images, preprocess=PREPROCESS))
-            p_img = final_images[0]
-        return p_img, original_faces, target_faces
+        # if self.aligner_type == "Yolo" or self.aligner_type == "no_crop":
+        #     original_faces.cropped_cloaks = protected_images.astype(np.uint8)
+        #     final_images = original_faces.merge_faces()
+        #     p_img = final_images[0]
+        # else:
+        #     original_faces.cloaked_cropped_faces = protected_images
+        #     final_images, images_without_face = original_faces.merge_faces(
+        #         reverse_process_cloaked(protected_images, preprocess=PREPROCESS),
+        #         reverse_process_cloaked(original_images, preprocess=PREPROCESS))
+        #     p_img = final_images[0]
+        # return p_img, original_faces, target_faces
 
 
-def test(num_identities, val = False):
+def run_test(num_identities, perturbation_budget, results_directory, val = False):
     if val:
         img_scorer = ImageScorer()
 
@@ -250,16 +170,16 @@ def test(num_identities, val = False):
     except Exception as e:
         pass
 
-    feature_extractors = ["resnet_arcface"] # i believe these are both arcface, trained on WebFace and VGGFace2, respectively
+    feature_extractors = ["resnet_arcface"]
     gpu = '0'
-    th = 0.017 #0.017  #high protection value
+    th = perturbation_budget 
     max_step = 100
     sd = 1e6
     lr = 20
     batch_size = 1 
     format = "jpeg"
     separate_target = True
-    debug = True
+    debug = False
     no_align = False
 
     lfw_root = "lfw"
@@ -277,8 +197,8 @@ def test(num_identities, val = False):
             id2 = np.random.randint(0, len(candidate_identities))
         identity_pairs.append((candidate_identities[id1], candidate_identities[id2]))
 
-
-    f = open("cloaking_log.csv", "w")
+    os.makedirs(results_directory, exist_ok=True)
+    f = open(f"{results_directory}/cloaking_log.csv", "w")
     f.write("source,target\n")
     for identity_pair in identity_pairs:
         source_img_paths = glob.glob(identity_pair[0] + "/*")
@@ -309,8 +229,7 @@ def test(num_identities, val = False):
             continue
 
         # create a new protector specific to this identity/experiment
-        protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr, 
-                           aligner_type="Yolo") # custom allows us to specify our own DSSIM threshold 
+        protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
 
 
         print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name}" + Style.RESET_ALL)
@@ -323,27 +242,27 @@ def test(num_identities, val = False):
             continue
         protected_img, original_faces, target_faces = res
         protected_img = cv2.cvtColor(protected_img, cv2.COLOR_RGB2BGR)
-        os.makedirs(f"verilight_tests/{source_name}2{target_name}", exist_ok=True)
-        cv2.imwrite(f"verilight_tests/{source_name}2{target_name}/source.jpg", source_img)
-        cv2.imwrite(f"verilight_tests/{source_name}2{target_name}/target.jpg", target_img)
-        cv2.imwrite(f"verilight_tests/{source_name}2{target_name}/cloaked_source.jpg", protected_img)
+        os.makedirs(f"{results_directory}/{source_name}2{target_name}", exist_ok=True)
+        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/source.jpg", source_img)
+        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/target.jpg", target_img)
+        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/cloaked_source.jpg", protected_img)
 
         # save crops for computign results of attack later
         for i in range(len(original_faces.cropped_faces)):
             og_face = cv2.cvtColor(original_faces.cropped_faces[i], cv2.COLOR_RGB2BGR)
-            cv2.imwrite(f"verilight_tests/{source_name}2{target_name}/source_crop.jpg", og_face)
+            cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/source_crop.jpg", og_face)
             cropped_cloak = cv2.cvtColor(original_faces.cropped_cloaks[i], cv2.COLOR_RGB2BGR)
-            cv2.imwrite(f"verilight_tests/{source_name}2{target_name}/cloak_crop.jpg", cropped_cloak)
+            cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/cloak_crop.jpg", cropped_cloak)
         for i, face in enumerate(target_faces.cropped_faces):
             face = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(f"verilight_tests/{source_name}2{target_name}/target_crop.jpg", face)
+            cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/target_crop.jpg", face)
 
         f.write(f"{source_name},{target_name}\n")
         f.flush()
 
         if val:
             print("Scoring images")
-            img_scorer.score_images(source_img_path, f"verilight_tests/{source_name}2{target_name}/cloaked_source.jpg",
+            img_scorer.score_images(source_img_path, f"{results_directory}/{source_name}2{target_name}/cloaked_source.jpg",
                                      target_img_path,
                                     og_references=other_source_imgs)
 
@@ -356,12 +275,7 @@ def test(num_identities, val = False):
     # cv2.imshow("Protected Image", protected_img)
     # cv2.waitKey(0)
 
-# from differntiator.py
-def resize_tensor(input_tensor, model_input_shape):
-    if input_tensor.shape[1:] == model_input_shape or model_input_shape[1] is None:
-        return input_tensor
-    resized_tensor = tf.image.resize(input_tensor, model_input_shape[:2])
-    return resized_tensor
+
 
 class ImageScorer():
     def __init__(self):
@@ -418,16 +332,5 @@ class ImageScorer():
             ref_prot_angle = np.arccos(np.dot(ref_emb, og_emb))
             print(f"Reference-OG {i} Angle (rad): {ref_prot_angle}")
 
-# test(10, val = True)
-# test("lfw/Amanda_Bynes/Amanda_Bynes_0001.jpg")
-# test("lfw/Amanda_Bynes/Amanda_Bynes_0002.jpg")
-# og_img = cv2.imread("imgs/obama.jpg")
-# protected_img = cv2.imread("imgs/obama_cloaked.jpeg")
-# score_images(og_img, protected_img)
-
-# imscor = ImageScorer()
-# references = glob.glob("lfw/Goldie_Hawn/*")
-# # print(references)
-# imscor.score_images("verilight_tests_og_extractor/Goldie_Hawn2Elijah_Wood/source.jpg", 
-#              "verilight_tests_og_extractor/Goldie_Hawn2Elijah_Wood/source.jpg", 
-#              "verilight_tests_og_extractor/Goldie_Hawn2Elijah_Wood/target.jpg", og_references=references)
+rho = 0.1
+run_test(180, rho, f"final_verilight_attacks/rho{rho}")

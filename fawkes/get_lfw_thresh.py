@@ -1,5 +1,5 @@
 from tf_insightface import buildin_models
-from verilight_experiments import ImageScorer
+from verilight_attacks import ImageScorer
 import glob
 import numpy as np
 import cv2
@@ -122,8 +122,8 @@ def get_get_bal_acc(same_X, diff_X, thresh):
 
 
 def get_best_threhsold():
-    diff_dists_path = f"diff_id_thetas.pkl" 
-    same_dists_path = f"same_id_thetas.pkl"
+    diff_dists_path = f"diff_id_thetas_yolo_take2.pkl" 
+    same_dists_path = f"same_id_thetas_yolo_take2.pkl"
 
     with open(diff_dists_path, "rb") as pklfile:
         diff_dists = pickle.load(pklfile)
@@ -132,11 +132,10 @@ def get_best_threhsold():
 
     diff_dists = np.array(diff_dists)
     same_dists = np.array(same_dists)
-    print(same_dists)
 
     best_bal_acc = float('-inf')
     best_bal_acc_t = None
-    for t in range(int(min(np.min(same_dists), np.min(diff_dists))*100), int(max(np.max(same_dists), np.max(diff_dists))*100)):
+    for t in range(100, int(max(np.max(same_dists), np.max(diff_dists))*100)):
         t /= 100
         bal_acc = get_get_bal_acc(same_dists, diff_dists, t)
         if bal_acc > best_bal_acc:
@@ -147,7 +146,7 @@ def get_best_threhsold():
 
 
 # get_embeddings()
-compute_same_id_scores()
+# compute_same_id_scores()
 # compute_diff_id_scores()
-# get_best_threhsold()
+get_best_threhsold()
 

@@ -50,7 +50,7 @@ class FawkesMaskGeneration:
     # max_val of image
     MAX_VAL = 255
     MAXIMIZE = False
-    IMAGE_SHAPE = (112, 112, 3)
+    IMAGE_SHAPE = (300, 300, 3)
     RATIO = 1.0
     LIMIT_DIST = False
     LOSS_TYPE = 'features'  # use features (original Fawkes) or gradients (Witches Brew) to run Fawkes?
@@ -146,65 +146,30 @@ class FawkesMaskGeneration:
         # make sure everything is the right size.
         model_input_shape = self.single_shape
         cur_aimg_input = self.resize_tensor(source_raw, model_input_shape)
-        if self.input_preprocesing == 'resnet_arcface':
-            cur_aimg_input = (cur_aimg_input - 127.5) * 0.0078125
         if target_raw is not None:
             cur_timg_input = self.resize_tensor(target_raw, model_input_shape)
-            if self.input_preprocesing == 'resnet_arcface':
-                cur_timg_input = (cur_timg_input - 127.5) * 0.0078125
         for bottleneck_model in self.bottleneck_models:
             if tape is not None:
                 try:
-                    tape.watch(bottleneck_model.model.variables)
+                    tape.watch(bottleneck_model.det_model.model.variables)
+                    tape.watch(bottleneck_model.rec_model.variables)
                 except AttributeError:
                     tape.watch(bottleneck_model.variables)
-            # get the respective feature space reprs.
-            # aimg_input, timg_input, simg_input = source, target, original 
-            ## investigating image format
-            # cur_aimg_input_np = cur_aimg_input.numpy()[0, :, :, :]
-            # cv2.imshow("Img", cur_aimg_input_np / 255)
-            # cv2.waitKey(0)
             bottleneck_a = bottleneck_model(cur_aimg_input)
-            # cv2.imshow(f"inp{self.it}", ((cur_aimg_input.numpy()[0, :, :, ::-1]/  0.0078125) + 127.5) / 255)
-            # cv2.waitKey(0)
-            if self.input_preprocesing == 'resnet_arcface':
-                bottleneck_a = bottleneck_a / np.linalg.norm(bottleneck_a, axis=1, keepdims=True)
-            if self.maximize:
-                bottleneck_s = bottleneck_model(original_raw)
-                if self.input_preprocesing == 'resnet_arcface':
-                    bottleneck_s = bottleneck_s / np.linalg.norm(bottleneck_s, axis=1, keepdims=True)
-                bottleneck_diff = bottleneck_a - bottleneck_s
-                scale_factor = tf.sqrt(tf.reduce_sum(tf.square(bottleneck_s), axis=1))
-            else:
-                bottleneck_t = bottleneck_model(cur_timg_input)
-                if self.input_preprocesing == 'resnet_arcface':
-                    bottleneck_t = bottleneck_t / np.linalg.norm(bottleneck_t, axis=1, keepdims=True)
-                    bottleneck_diff = tf.math.acos(tf.tensordot(bottleneck_t, tf.transpose(bottleneck_a), axes=1))
-                    # print("Bottleneck diff", bottleneck_diff, np.max(cur_aimg_input), np.min(cur_aimg_input), 
-                        #   np.max(cur_timg_input), np.min(cur_timg_input))
-                    if self.it == 1:
-                        print("Starting bottleneck diff", bottleneck_diff)
-                    # if bottleneck_diff < 1.21:
-                    #     print("Below threshold at", self.it, bottleneck_diff)
-                    #     STOP = True
-                    elif self.early_stopper.early_stop(bottleneck_diff):   
-                        print("Early stopping at iteration", self.it)        
-                        STOP = True  
-                        # # save cur_aimg_input and cur_timg_input
-                        # save_aimg_input = cur_aimg_input.numpy()
-                        # save_timg_input = cur_timg_input.numpy()
-                        # save_aimg_input = (save_aimg_input / 0.0078125) + 127.5
-                        # save_timg_input = (save_timg_input / 0.0078125) + 127.5
-                        # save_aimg_input = save_aimg_input.astype(np.uint8)
-                        # save_timg_input = save_timg_input.astype(np.uint8)
-                        # cv2.imwrite(f"early_stop_aimg_input_{self.it}.png", save_aimg_input[0, :, :, ::-1])
-                        # cv2.imwrite(f"early_stop_timg_input_{self.it}.png", save_timg_input[0, :, :, ::-1])
-                    # print("Bottleneck diff", bottleneck_diff)
-                    # scale_factor = 10 
-                    scale_factor = np.pi # make same range as DSSIM (0-1)
-                else:
-                    bottleneck_diff = bottleneck_t - bottleneck_a
-                    scale_factor = tf.sqrt(tf.reduce_sum(tf.square(bottleneck_t), axis=1))
+            bottleneck_a = bottleneck_a / np.linalg.norm(bottleneck_a, axis=1, keepdims=True)
+            bottleneck_t = bottleneck_model(cur_timg_input)
+            bottleneck_t = bottleneck_t / np.linalg.norm(bottleneck_t, axis=1, keepdims=True)
+            bottleneck_diff = tf.math.acos(tf.tensordot(bottleneck_t, tf.transpose(bottleneck_a), axes=1))
+            if self.it == 1:
+                print("Starting bottleneck diff", bottleneck_diff)
+            # if bottleneck_diff < 1.21:
+            #     print("Below threshold at", self.it, bottleneck_diff)
+            #     STOP = True
+            elif self.early_stopper.early_stop(bottleneck_diff):   
+                print("Early stopping at iteration", self.it)        
+                STOP = True  
+            scale_factor = np.pi # make same range as DSSIM (0-1)
+        
             cur_bottlesim = tf.reduce_sum(tf.square(bottleneck_diff), axis=1)
             cur_bottlesim = cur_bottlesim / scale_factor
             bottlesim += cur_bottlesim
