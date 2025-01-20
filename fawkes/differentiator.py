@@ -89,7 +89,7 @@ class FawkesMaskGeneration:
         self.loss_method = loss_method
         self.tanh_process = tanh_process
         self.input_preprocesing = input_preprocesing
-        self.early_stopper = EarlyStopper(patience=5, min_delta=0.001)
+        self.early_stopper = EarlyStopper(patience=5, min_delta=0.005)
     
     @staticmethod
     def resize_tensor(input_tensor, model_input_shape):
@@ -165,6 +165,8 @@ class FawkesMaskGeneration:
             # cv2.imshow("Img", cur_aimg_input_np / 255)
             # cv2.waitKey(0)
             bottleneck_a = bottleneck_model(cur_aimg_input)
+            # cv2.imshow(f"inp{self.it}", ((cur_aimg_input.numpy()[0, :, :, ::-1]/  0.0078125) + 127.5) / 255)
+            # cv2.waitKey(0)
             if self.input_preprocesing == 'resnet_arcface':
                 bottleneck_a = bottleneck_a / np.linalg.norm(bottleneck_a, axis=1, keepdims=True)
             if self.maximize:
@@ -178,14 +180,25 @@ class FawkesMaskGeneration:
                 if self.input_preprocesing == 'resnet_arcface':
                     bottleneck_t = bottleneck_t / np.linalg.norm(bottleneck_t, axis=1, keepdims=True)
                     bottleneck_diff = tf.math.acos(tf.tensordot(bottleneck_t, tf.transpose(bottleneck_a), axes=1))
+                    # print("Bottleneck diff", bottleneck_diff, np.max(cur_aimg_input), np.min(cur_aimg_input), 
+                        #   np.max(cur_timg_input), np.min(cur_timg_input))
                     if self.it == 1:
                         print("Starting bottleneck diff", bottleneck_diff)
-                    if bottleneck_diff < 1.21:
-                        print("Below threshold at", self.it, bottleneck_diff)
-                        STOP = True
+                    # if bottleneck_diff < 1.21:
+                    #     print("Below threshold at", self.it, bottleneck_diff)
+                    #     STOP = True
                     elif self.early_stopper.early_stop(bottleneck_diff):   
                         print("Early stopping at iteration", self.it)        
                         STOP = True  
+                        # save cur_aimg_input and cur_timg_input
+                        save_aimg_input = cur_aimg_input.numpy()
+                        save_timg_input = cur_timg_input.numpy()
+                        save_aimg_input = (save_aimg_input / 0.0078125) + 127.5
+                        save_timg_input = (save_timg_input / 0.0078125) + 127.5
+                        save_aimg_input = save_aimg_input.astype(np.uint8)
+                        save_timg_input = save_timg_input.astype(np.uint8)
+                        cv2.imwrite(f"early_stop_aimg_input_{self.it}.png", save_aimg_input[0, :, :, ::-1])
+                        cv2.imwrite(f"early_stop_timg_input_{self.it}.png", save_timg_input[0, :, :, ::-1])
                     # print("Bottleneck diff", bottleneck_diff)
                     scale_factor = 10 # make more similar in scake to the original Fawkes diff loss, otherwise DSSIM loss is completely overpowered
                 else:
@@ -286,6 +299,9 @@ class FawkesMaskGeneration:
                 aimg_raw = simg_raw + actual_modifier
 
                 simg_raw = self.reverse_arctanh(simg_tanh)
+
+                # EDIT BY HADLEIGH: IMPORTANT IF USING TARGETS
+                timg_raw = self.reverse_arctanh(timg_tanh) if target_imgs is not None else None
 
                 # Convert further preprocess for bottleneck
                 aimg_input = self.input_space_process(aimg_raw)

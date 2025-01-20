@@ -24,3 +24,4 @@ fawkes_dev/protect_personId.txt
 *.png
 *.pkl
 lfw/*
+*.h5

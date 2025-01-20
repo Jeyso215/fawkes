@@ -327,7 +327,7 @@ def reverse_preprocess(X, method):
         X = imagenet_reverse_preprocessing(X)
     elif method == 'resnet_arcface':
         # print(np.max(X), np.min(X))
-        # X =  + 127.5
+        # X =  (X  /  0.0078125) + 127.5
         # print(np.max(X), np.min(X))
         pass
     else:

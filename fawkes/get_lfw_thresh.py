@@ -9,13 +9,12 @@ import pickle
 
 def get_embeddings():
     im_scorer = ImageScorer()
-    model = buildin_models("ResNet101V2", dropout=0.4, emb_shape=512, output_layer="E")
     lfw_folders = glob.glob("lfw/*")
-    os.makedirs("lfw_embs_yolo", exist_ok=True)
+    os.makedirs("lfw_embs_yolo_take2", exist_ok=True)
     for folder_num, folder in enumerate(lfw_folders):
         print(f"Processing folder {folder_num}/{len(lfw_folders)}")
         person_name = folder.split("/")[-1]
-        person_emb_folder = "lfw_embs_yolo/" + person_name
+        person_emb_folder = "lfw_embs_yolo_take2/" + person_name
         files = glob.glob(folder + "/*")
         if len(files) < 2:
             continue
@@ -41,7 +40,7 @@ def get_embeddings():
 
 def compute_same_id_scores():
     same_id_thetas = []
-    lfw_folders = glob.glob("lfw_embs_yolo/*")
+    lfw_folders = glob.glob("lfw_embs_yolo_take2/*")
     for folder_num, folder in enumerate(lfw_folders):
         print(f"Processing folder {folder_num}/{len(lfw_folders)}")
         files = glob.glob(folder + "/*")
@@ -59,12 +58,12 @@ def compute_same_id_scores():
             same_id_thetas.append(theta)
         print("--------------------------------")
     print("average same theta: ", np.mean(same_id_thetas))
-    with open("same_id_thetas_yolo.pkl", "wb") as f:
+    with open("same_id_thetas_yolo_take2.pkl", "wb") as f:
         pickle.dump(same_id_thetas, f)
     
 def compute_diff_id_scores():
     diff_id_thetas = []
-    lfw_folders = glob.glob("lfw_embs_yolo/*")
+    lfw_folders = glob.glob("lfw_embs_yolo_take2/*")
     id_combs = list(itertools.combinations([i for i in range(len(lfw_folders))], 2))
     for id_comb in id_combs:
         id1 = id_comb[0]
@@ -83,7 +82,7 @@ def compute_diff_id_scores():
                 diff_id_thetas.append(theta)
         print("--------------------------------")
     print("Average diff theta: ", np.mean(diff_id_thetas))
-    with open("diff_id_thetas_yolo.pkl", "wb") as f:
+    with open("diff_id_thetas_yolo_take2.pkl", "wb") as f:
         pickle.dump(diff_id_thetas, f)
 
 def get_get_bal_acc(same_X, diff_X, thresh):
@@ -148,7 +147,7 @@ def get_best_threhsold():
 
 
 # get_embeddings()
-# compute_same_id_scores()
-compute_diff_id_scores()
+compute_same_id_scores()
+# compute_diff_id_scores()
 # get_best_threhsold()
 

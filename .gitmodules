@@ -1,0 +1,3 @@
+[submodule "fawkes/InsightFace-tensorflow"]
+	path = fawkes/InsightFace-tensorflow
+	url = https://github.com/Hadleigh-Schwartz/InsightFace-tensorflow.git
