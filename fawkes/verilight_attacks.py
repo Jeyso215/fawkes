@@ -32,8 +32,6 @@ from utils import init_gpu, dump_image, reverse_process_cloaked, \
 from fawkes.align_face import aligner
 
 
-
-
 def generate_cloak_images(protector, image_X, target_emb=None):
     cloaked_image_X = protector.compute(image_X, target_emb)
     return cloaked_image_X

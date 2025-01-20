@@ -145,20 +145,8 @@ class Fawkes(object):
                                                   )
         protected_images = generate_cloak_images(self.protector, original_images, target_emb = target_images)
 
-
+        return protected_images
         
-        # if self.aligner_type == "Yolo" or self.aligner_type == "no_crop":
-        #     original_faces.cropped_cloaks = protected_images.astype(np.uint8)
-        #     final_images = original_faces.merge_faces()
-        #     p_img = final_images[0]
-        # else:
-        #     original_faces.cloaked_cropped_faces = protected_images
-        #     final_images, images_without_face = original_faces.merge_faces(
-        #         reverse_process_cloaked(protected_images, preprocess=PREPROCESS),
-        #         reverse_process_cloaked(original_images, preprocess=PREPROCESS))
-        #     p_img = final_images[0]
-        # return p_img, original_faces, target_faces
-
 
 def run_test(num_identities, perturbation_budget, results_directory, val = False):
     if val:
@@ -240,23 +228,17 @@ def run_test(num_identities, perturbation_budget, results_directory, val = False
         if type(res) == int:
             print("No face or more than one face detected. Skipping")
             continue
-        protected_img, original_faces, target_faces = res
+        protected_img = res
+        protected_img = protected_img[0]
+        protected_img = protected_img.astype(np.uint8)
         protected_img = cv2.cvtColor(protected_img, cv2.COLOR_RGB2BGR)
+        original_source_size = source_img.shape[:2]
+        protected_img = cv2.resize(protected_img, (original_source_size[1], original_source_size[0]))
+        
         os.makedirs(f"{results_directory}/{source_name}2{target_name}", exist_ok=True)
         cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/source.jpg", source_img)
         cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/target.jpg", target_img)
         cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/cloaked_source.jpg", protected_img)
-
-        # save crops for computign results of attack later
-        for i in range(len(original_faces.cropped_faces)):
-            og_face = cv2.cvtColor(original_faces.cropped_faces[i], cv2.COLOR_RGB2BGR)
-            cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/source_crop.jpg", og_face)
-            cropped_cloak = cv2.cvtColor(original_faces.cropped_cloaks[i], cv2.COLOR_RGB2BGR)
-            cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/cloak_crop.jpg", cropped_cloak)
-        for i, face in enumerate(target_faces.cropped_faces):
-            face = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/target_crop.jpg", face)
-
         f.write(f"{source_name},{target_name}\n")
         f.flush()
 
@@ -332,5 +314,5 @@ class ImageScorer():
             ref_prot_angle = np.arccos(np.dot(ref_emb, og_emb))
             print(f"Reference-OG {i} Angle (rad): {ref_prot_angle}")
 
-rho = 0.1
-run_test(180, rho, f"final_verilight_attacks/rho{rho}")
+rho = 0.01
+run_test(180, rho, f"facedet_verilight_attacks/rho{rho}", val = True)
