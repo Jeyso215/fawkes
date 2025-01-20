@@ -190,17 +190,18 @@ class FawkesMaskGeneration:
                     elif self.early_stopper.early_stop(bottleneck_diff):   
                         print("Early stopping at iteration", self.it)        
                         STOP = True  
-                        # save cur_aimg_input and cur_timg_input
-                        save_aimg_input = cur_aimg_input.numpy()
-                        save_timg_input = cur_timg_input.numpy()
-                        save_aimg_input = (save_aimg_input / 0.0078125) + 127.5
-                        save_timg_input = (save_timg_input / 0.0078125) + 127.5
-                        save_aimg_input = save_aimg_input.astype(np.uint8)
-                        save_timg_input = save_timg_input.astype(np.uint8)
-                        cv2.imwrite(f"early_stop_aimg_input_{self.it}.png", save_aimg_input[0, :, :, ::-1])
-                        cv2.imwrite(f"early_stop_timg_input_{self.it}.png", save_timg_input[0, :, :, ::-1])
+                        # # save cur_aimg_input and cur_timg_input
+                        # save_aimg_input = cur_aimg_input.numpy()
+                        # save_timg_input = cur_timg_input.numpy()
+                        # save_aimg_input = (save_aimg_input / 0.0078125) + 127.5
+                        # save_timg_input = (save_timg_input / 0.0078125) + 127.5
+                        # save_aimg_input = save_aimg_input.astype(np.uint8)
+                        # save_timg_input = save_timg_input.astype(np.uint8)
+                        # cv2.imwrite(f"early_stop_aimg_input_{self.it}.png", save_aimg_input[0, :, :, ::-1])
+                        # cv2.imwrite(f"early_stop_timg_input_{self.it}.png", save_timg_input[0, :, :, ::-1])
                     # print("Bottleneck diff", bottleneck_diff)
-                    scale_factor = 10 # make more similar in scake to the original Fawkes diff loss, otherwise DSSIM loss is completely overpowered
+                    # scale_factor = 10 
+                    scale_factor = np.pi # make same range as DSSIM (0-1)
                 else:
                     bottleneck_diff = bottleneck_t - bottleneck_a
                     scale_factor = tf.sqrt(tf.reduce_sum(tf.square(bottleneck_t), axis=1))
@@ -221,7 +222,11 @@ class FawkesMaskGeneration:
             loss = self.const * tf.square(input_space_loss) - feature_space_loss * self.const_diff
         else:
             if self.it <= self.MAX_ITERATIONS:
-                loss = self.const * tf.square(input_space_loss) + 1000 * feature_space_loss
+                loss = self.const * tf.square(input_space_loss) + 100 * feature_space_loss # reduce coeff on feature_space_loss to allow DSSIM to have mrore impact
+                # here it looks like the lambda coefficient for controlling perceptibility, referenced in the paper
+                #  (in the equation that references applying penalty method to Eq 2)
+                # is actually refelected in the coefficient of feature_space_loss. Either way, it configures the trade-off.
+                # 100 is around the lowest I can get without the attack always failing because it prioritizes DSSIM too much.
 
         loss_sum = tf.reduce_sum(loss)
         return loss_sum, feature_space_loss, input_space_loss_raw_avg, dist_raw, STOP
