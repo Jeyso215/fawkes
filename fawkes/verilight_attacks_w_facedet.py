@@ -148,27 +148,13 @@ class Fawkes(object):
         return protected_images
         
 
-def run_test(num_identities, perturbation_budget, results_directory, val = False):
-    if val:
-        img_scorer = ImageScorer()
-
+def gen_identity_pairs(num_identities, results_directory):
+ 
     try:
         import signal
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     except Exception as e:
         pass
-
-    feature_extractors = ["resnet_arcface"]
-    gpu = '0'
-    th = perturbation_budget 
-    max_step = 100
-    sd = 1e6
-    lr = 20
-    batch_size = 1 
-    format = "jpeg"
-    separate_target = True
-    debug = False
-    no_align = False
 
     lfw_root = "lfw"
     lfw_identities = glob.glob(lfw_root + "/*")
@@ -186,8 +172,7 @@ def run_test(num_identities, perturbation_budget, results_directory, val = False
         identity_pairs.append((candidate_identities[id1], candidate_identities[id2]))
 
     os.makedirs(results_directory, exist_ok=True)
-    f = open(f"{results_directory}/cloaking_log.csv", "w")
-    f.write("source,target\n")
+
     for identity_pair in identity_pairs:
         source_img_paths = glob.glob(identity_pair[0] + "/*")
         target_img_paths = glob.glob(identity_pair[1] + "/*")
@@ -198,27 +183,44 @@ def run_test(num_identities, perturbation_budget, results_directory, val = False
         # randomly choose one of the images
         source_img_path = np.random.choice(source_img_paths, 1, replace=False)[0]
         target_img_path = np.random.choice(target_img_paths, 1, replace=False)[0]
-        if val:
-            # get the other source images 
-            other_source_imgs = []
-            for img_path in source_img_paths:
-                if img_path != source_img_path:
-                    try:
-                        source_img = cv2.imread(img_path)
-                        if source_img is None:
-                            continue
-                    except:
-                        continue
-                    other_source_imgs.append(img_path)
+        
         try:
             source_img = cv2.imread(source_img_path)
             target_img = cv2.imread(target_img_path)
         except:
             continue
 
+        # make directory
+        os.makedirs(f"{results_directory}/{source_name}2{target_name}", exist_ok=True)
+        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/source.jpg", source_img)
+        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/target.jpg", target_img)
+
+def run_test(perturbation_budget, results_directory):
+
+    feature_extractors = ["resnet_arcface"]
+    gpu = '0'
+    th = perturbation_budget 
+    max_step = 1000
+    sd = 1e6
+    lr = 0.5
+    batch_size = 1 
+    format = "jpeg"
+    separate_target = True
+    debug = True
+    no_align = False
+
+    victim_directories = glob.glob(results_directory + "/*")
+    f = open(f"{results_directory}/cloaking_log.csv", "w")
+    f.write("source,target\n")
+    for dir in victim_directories:
+        source_img_path = dir + "/source.jpg"
+        target_img_path = dir + "/target.jpg"
+        source_name = os.path.basename(dir).split("2")[0]
+        target_name = os.path.basename(dir).split("2")[1]
+        source_img = cv2.imread(source_img_path)
+        
         # create a new protector specific to this identity/experiment
         protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
-
 
         print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name}" + Style.RESET_ALL)
         res = protector.run_protection(source_img_path, target_img_path, th=th, sd=sd, lr=lr,
@@ -235,18 +237,9 @@ def run_test(num_identities, perturbation_budget, results_directory, val = False
         original_source_size = source_img.shape[:2]
         protected_img = cv2.resize(protected_img, (original_source_size[1], original_source_size[0]))
         
-        os.makedirs(f"{results_directory}/{source_name}2{target_name}", exist_ok=True)
-        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/source.jpg", source_img)
-        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/target.jpg", target_img)
-        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/cloaked_source.jpg", protected_img)
+        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/cloaked_source_{perturbation_budget}.jpg", protected_img)
         f.write(f"{source_name},{target_name}\n")
         f.flush()
-
-        if val:
-            print("Scoring images")
-            img_scorer.score_images(source_img_path, f"{results_directory}/{source_name}2{target_name}/cloaked_source.jpg",
-                                     target_img_path,
-                                    og_references=other_source_imgs)
 
     f.close()
 
@@ -265,30 +258,27 @@ class ImageScorer():
         # self.extractor = buildin_models("ResNet101V2", dropout=0.4, emb_shape=512, output_layer="E")
         self.extractor = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
         self.aligner = aligner()
-        self.yolo_detector = YoloV5FaceDetector()
+        yolo_detector = YoloV5FaceDetector()
+        rec_model = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
+        self.det_rec_model = DetRecModel(yolo_detector, rec_model)
 
-    def get_embedding(self, img_path, detect_face = True):
-        # img = load_image(img_path)
-        # with open(os.devnull, 'w') as devnull:
-        #     with contextlib.redirect_stdout(devnull):
-        #         faces = Faces([img_path], [img], self.aligner, verbose=0)
-        # img = faces.cropped_faces
+    def get_embedding(self, img_path):
+
         img = cv2.imread(img_path)
-        if detect_face:
-            bbs, _, ccs, nimgs = self.yolo_detector.detect_in_image(img, image_format="BGR")
-        else:
-            nimgs = np.array([img[:, :, ::-1]])
-        if len(nimgs) == 0:
-            print("No face detected. ")
-            return None
-        if len(nimgs) > 1:
-            print("More than one face detected. ")
-            return None
-        img = nimgs
-        img = tf.Variable(img, dtype=np.float32)
-        img = resize_tensor(img, (112, 112, 3))
-        img = (img- 127.5) * 0.0078125 # if using resnet cosfcae
-        emb = self.extractor(img)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = np.array([img])
+        emb = self.det_rec_model.predict(img)
+        # bbs, _, ccs, nimgs = self.yolo_detector.detect_in_image(img, image_format="BGR")
+        # # skip alignment
+        # nimgs = img[:, :, ::-1]
+        # bbs = bbs[0]
+        # x1, y1, x2, y2 = bbs.astype(np.uint8)
+        # img = nimgs[y1:y2, x1:x2]
+        # img = np.array([img])
+        # img = tf.Variable(img, dtype=np.float32)
+        # img = (img- 127.5) * 0.0078125 # if using resnet cosfcae
+        # img = resize_tensor(img, (112, 112, 3))
+        # emb = self.extractor(img)
         emb = emb.numpy()
         emb = emb[0]
         emb = emb / np.linalg.norm(emb) 
@@ -314,5 +304,3 @@ class ImageScorer():
             ref_prot_angle = np.arccos(np.dot(ref_emb, og_emb))
             print(f"Reference-OG {i} Angle (rad): {ref_prot_angle}")
 
-rho = 0.01
-run_test(180, rho, f"facedet_verilight_attacks/rho{rho}", val = True)

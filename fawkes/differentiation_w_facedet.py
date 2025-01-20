@@ -25,7 +25,7 @@ class EarlyStopper:
         if validation_loss < self.min_validation_loss:
             self.min_validation_loss = validation_loss
             self.counter = 0
-        elif validation_loss > (self.min_validation_loss + self.min_delta):
+        elif validation_loss >= (self.min_validation_loss + self.min_delta):
             self.counter += 1
             if self.counter >= self.patience:
                 return True
@@ -89,7 +89,7 @@ class FawkesMaskGeneration:
         self.loss_method = loss_method
         self.tanh_process = tanh_process
         self.input_preprocesing = input_preprocesing
-        self.early_stopper = EarlyStopper(patience = 5, min_delta=0.005)
+        self.early_stopper = EarlyStopper(patience = 5, min_delta=0.00)
     
     @staticmethod
     def resize_tensor(input_tensor, model_input_shape):
