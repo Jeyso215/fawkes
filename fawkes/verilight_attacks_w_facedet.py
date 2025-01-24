@@ -200,7 +200,7 @@ def run_test(perturbation_budget, results_directory):
     feature_extractors = ["resnet_arcface"]
     gpu = '0'
     th = perturbation_budget 
-    max_step = 1000
+    max_step = 100
     sd = 1e6
     lr = 0.5
     batch_size = 1 
@@ -218,11 +218,14 @@ def run_test(perturbation_budget, results_directory):
         source_name = os.path.basename(dir).split("2")[0]
         target_name = os.path.basename(dir).split("2")[1]
         source_img = cv2.imread(source_img_path)
+
+        if os.path.exists(f"{results_directory}/{source_name}2{target_name}/TEST_cloaked_source_{perturbation_budget}.jpg"):
+            continue
         
         # create a new protector specific to this identity/experiment
         protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
 
-        print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name}" + Style.RESET_ALL)
+        print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name} with rho {perturbation_budget}" + Style.RESET_ALL)
         res = protector.run_protection(source_img_path, target_img_path, th=th, sd=sd, lr=lr,
                             max_step=max_step,
                             batch_size=batch_size, format=format,
@@ -237,7 +240,7 @@ def run_test(perturbation_budget, results_directory):
         original_source_size = source_img.shape[:2]
         protected_img = cv2.resize(protected_img, (original_source_size[1], original_source_size[0]))
         
-        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/cloaked_source_{perturbation_budget}.jpg", protected_img)
+        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/TEST_cloaked_source_{perturbation_budget}.jpg", protected_img)
         f.write(f"{source_name},{target_name}\n")
         f.flush()
 
@@ -250,6 +253,39 @@ def run_test(perturbation_budget, results_directory):
     # cv2.imshow("Protected Image", protected_img)
     # cv2.waitKey(0)
 
+def perturb_single_img(img_path, target_img_path, perturbation_budget, results_directory):
+    feature_extractors = ["resnet_arcface"]
+    gpu = '0'
+    th = perturbation_budget 
+    max_step = 100
+    sd = 1e6
+    lr = 10
+    batch_size = 1 
+    format = "jpeg"
+    separate_target = True
+    debug = True
+    no_align = False
+    # create a new protector specific to this identity/experiment
+    protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
+
+    og_img_size = cv2.imread(img_path).shape[:2]
+    print(Fore.MAGENTA + f"Cloaking {img_path} to {target_img_path} with rho {perturbation_budget}" + Style.RESET_ALL)
+    res = protector.run_protection(img_path, target_img_path, th=th, sd=sd, lr=lr,
+                            max_step=max_step,
+                            batch_size=batch_size, format=format,
+                            separate_target=separate_target, debug=debug, no_align=no_align)
+    if res is None:
+        print("ERROR")
+
+    protected_img = res[0]
+    protected_img = protected_img.astype(np.uint8)
+    protected_img = cv2.cvtColor(protected_img, cv2.COLOR_RGB2BGR)
+    protected_img = cv2.resize(protected_img, (og_img_size[1], og_img_size[0]))
+    
+    if not os.path.exists(results_directory):
+        os.makedirs(results_directory)
+    
+    cv2.imwrite(f"{results_directory}/cloaked_source_{perturbation_budget}.jpg", protected_img)
 
 
 class ImageScorer():
@@ -263,22 +299,12 @@ class ImageScorer():
         self.det_rec_model = DetRecModel(yolo_detector, rec_model)
 
     def get_embedding(self, img_path):
-
+        # do exact same processing as done on images provided to Fawkes
         img = cv2.imread(img_path)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
         img = np.array([img])
         emb = self.det_rec_model.predict(img)
-        # bbs, _, ccs, nimgs = self.yolo_detector.detect_in_image(img, image_format="BGR")
-        # # skip alignment
-        # nimgs = img[:, :, ::-1]
-        # bbs = bbs[0]
-        # x1, y1, x2, y2 = bbs.astype(np.uint8)
-        # img = nimgs[y1:y2, x1:x2]
-        # img = np.array([img])
-        # img = tf.Variable(img, dtype=np.float32)
-        # img = (img- 127.5) * 0.0078125 # if using resnet cosfcae
-        # img = resize_tensor(img, (112, 112, 3))
-        # emb = self.extractor(img)
         emb = emb.numpy()
         emb = emb[0]
         emb = emb / np.linalg.norm(emb) 
@@ -303,4 +329,5 @@ class ImageScorer():
                 continue
             ref_prot_angle = np.arccos(np.dot(ref_emb, og_emb))
             print(f"Reference-OG {i} Angle (rad): {ref_prot_angle}")
+
 

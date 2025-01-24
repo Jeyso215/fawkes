@@ -89,7 +89,7 @@ class FawkesMaskGeneration:
         self.loss_method = loss_method
         self.tanh_process = tanh_process
         self.input_preprocesing = input_preprocesing
-        self.early_stopper = EarlyStopper(patience = 5, min_delta=0.00)
+        self.early_stopper = EarlyStopper(patience = 10, min_delta=0.00)
     
     @staticmethod
     def resize_tensor(input_tensor, model_input_shape):
@@ -116,8 +116,6 @@ class FawkesMaskGeneration:
             mean = np.repeat([[[[103.939, 116.779, 123.68]]]], len(img), axis=0)
             raw_img = (img[..., ::-1] - mean)
         elif self.input_preprocesing == 'resnet_arcface':
-            # raw_img = (img - 127.5) * 0.0078125
-            # print("inp", np.max(raw_img), np.min(raw_img))
             raw_img = img
         else:
             raw_img = img
@@ -143,11 +141,9 @@ class FawkesMaskGeneration:
         STOP = False
         bottlesim = 0.0
         bottlesim_sum = 0.0
-        # make sure everything is the right size.
-        model_input_shape = self.single_shape
-        cur_aimg_input = self.resize_tensor(source_raw, model_input_shape)
-        if target_raw is not None:
-            cur_timg_input = self.resize_tensor(target_raw, model_input_shape)
+
+        cur_aimg_input = source_raw 
+        cur_timg_input = target_raw
         for bottleneck_model in self.bottleneck_models:
             if tape is not None:
                 try:
