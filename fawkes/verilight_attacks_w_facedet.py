@@ -200,9 +200,9 @@ def run_test(perturbation_budget, results_directory):
     feature_extractors = ["resnet_arcface"]
     gpu = '0'
     th = perturbation_budget 
-    max_step = 100
+    max_step = 150
     sd = 1e6
-    lr = 0.5
+    lr = 10
     batch_size = 1 
     format = "jpeg"
     separate_target = True

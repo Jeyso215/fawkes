@@ -11,32 +11,38 @@ import cv2
 Results
 
 
-0.05 -> 0.5 ASR, 68, samples
 """
 
 face_detector = YoloV5FaceDetector()
 im_scorer = ImageScorer()
-attack_directory = "final_w_facedet"
+attack_directory = "faces_copy"
 attack_folders = glob.glob(attack_directory + "/*")
 attack_folders.sort()
 prefix = "TEST"
-necessary_files = ["cloaked_source_0.005.jpg", "cloaked_source_0.01.jpg", "cloaked_source_0.02.jpg",
-                     "cloaked_source_0.03.jpg", "cloaked_source_0.04.jpg", 
-                   "cloaked_source_0.05.jpg", "cloaked_source_0.06.jpg", "cloaked_source_0.07.jpg", 
-                   "cloaked_source_0.08.jpg", "cloaked_source_0.09.jpg", "cloaked_source_0.1.jpg"]
+# necessary_files = ["cloaked_source_0.005.jpg", "cloaked_source_0.01.jpg", "cloaked_source_0.02.jpg",
+#                      "cloaked_source_0.03.jpg", "cloaked_source_0.04.jpg", 
+#                    "cloaked_source_0.05.jpg", "cloaked_source_0.06.jpg", "cloaked_source_0.07.jpg", 
+#                    "cloaked_source_0.08.jpg", "cloaked_source_0.09.jpg", "cloaked_source_0.1.jpg"]
                 #    "cloaked_source_0.1.jpg", 
                 #    "cloaked_source_0.2.jpg","cloaked_source_0.3.jpg",
                 #     "cloaked_source_0.4.jpg", "cloaked_source_0.5.jpg"]
+necessary_files = []
 threshold = .88 # verilight decision threshold
-rhos = [0.005, 0.01, 0.04, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
+rhos = [0.005, 0.01, 0.04, 0.05, 0.1, 0.02, 0.03, 0.06, 0.07, 0.08, 0.09]
+# usenix security results accidentally only considered [0.005, 0.01, 0.04, 0.05, 0.1]
+# because rhos was set to rhos = [0.005, 0.01, 0.04, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5], where 0.2, 0.3, 0.4, 0.5 aren't valid
+
 
 def get_stats(rho):
+    """
+    Get stats by budget and not actual resultant DSSIM
+    """
     success = 0
     tot_samples = 0
     whole_imgs_dissims = []
     cropped_imgs_dissims = []
     for attack_folder in attack_folders:
-        if ".csv" in attack_folder:
+        if "_TESTING.csv" in attack_folder:
             continue
     
         source_path = attack_folder + "/source.jpg"
@@ -108,6 +114,11 @@ def get_stats(rho):
 
 
 def aggregated_stats():
+    """
+    Function used to get usenix security results. LR was 10 I believe. IMG_SIZE was 300.
+
+    Group stats by resultant DSSIM rather than budget
+    """
     res_dict = {}
     res_dict['0.0-0.01'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
     res_dict['0.01-0.02'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
@@ -122,7 +133,7 @@ def aggregated_stats():
     res_dict['greater'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
     for rho in rhos:
         for attack_folder in attack_folders:
-            if ".csv" in attack_folder:
+            if "_TESTING.csv" in attack_folder:
                 continue
         
             source_path = attack_folder + "/source.jpg"
@@ -203,6 +214,8 @@ def aggregated_stats():
                 dissim_bin = 'greater'
 
             print(f"Bin: {dissim_bin}. Theta: {cloak_target_theta}")
+            if source_target_theta < threshold:
+                continue # not a valid attack because source and target were already under the threshold
             if cloak_target_theta <  threshold:
                 res_dict[dissim_bin]['successes'] += 1
 
@@ -210,7 +223,7 @@ def aggregated_stats():
             res_dict[dissim_bin]['whole_imgs_dissims'].append(source_cloak_dissim)
             res_dict[dissim_bin]['cropped_imgs_dissims'].append(cropped_source_cloak_dissim)
         
-        with open("aggregated_stats_temp.csv", "w") as f:
+        with open("aggregated_stats_temp_TESTING.csv", "w") as f:
             f.write('bin,succes_rate,successes,total,whole_imgs_dissim,cropped_imgs_dissim\n')
             for k, v in res_dict.items():
                 if v['total'] == 0:
@@ -220,11 +233,13 @@ def aggregated_stats():
                 f.write(f"{k},{success_rate},{v['successes']},{v['total']},{np.mean(v['whole_imgs_dissims'])},{np.mean(v['cropped_imgs_dissims'])}\n")
 
 
-    with open("aggregated_stats.csv", "w") as f:
+    with open("aggregated_stats_TESTING.csv", "w") as f:
         f.write('bin,succes_rate,successes,total,whole_imgs_dissim,cropped_imgs_dissim\n')
         for k, v in res_dict.items():
             if v['total'] == 0:
                 success_rate = 0
+            elif v['total'] < 10: # not enough to jude
+                continue
             else:
                 success_rate = v['successes']/v['total']
             f.write(f"{k},{success_rate},{v['successes']},{v['total']},{np.mean(v['whole_imgs_dissims'])},{np.mean(v['cropped_imgs_dissims'])}\n")

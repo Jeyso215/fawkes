@@ -161,9 +161,9 @@ class FawkesMaskGeneration:
             # if bottleneck_diff < 1.21:
             #     print("Below threshold at", self.it, bottleneck_diff)
             #     STOP = True
-            elif self.early_stopper.early_stop(bottleneck_diff):   
-                print("Early stopping at iteration", self.it)        
-                STOP = True  
+            # elif self.early_stopper.early_stop(bottleneck_diff):   
+            #     print("Early stopping at iteration", self.it)        
+            #     STOP = True  
             scale_factor = np.pi # make same range as DSSIM (0-1)
         
             cur_bottlesim = tf.reduce_sum(tf.square(bottleneck_diff), axis=1)
