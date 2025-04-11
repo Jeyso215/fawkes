@@ -1,5 +1,7 @@
 Fawkes
 ------
+Note: This code doesn't require pip install fawkes, it just uses files from repo.
+
 :warning: Check out our MacOS/Windows Software on our official [webpage](https://sandlab.cs.uchicago.edu/fawkes/#code).
 
 Fawkes is a privacy protection system developed by researchers at [SANDLab](https://sandlab.cs.uchicago.edu/),
