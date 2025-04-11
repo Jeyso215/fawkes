@@ -26,7 +26,7 @@ from differentiation_w_facedet import FawkesMaskGeneration
 from utils import init_gpu, dump_image, reverse_process_cloaked, \
     Faces, load_image, load_extractor
 
-from fawkes.align_face import aligner
+from align_face import aligner
 
 
 # from differntiator.py

@@ -37,7 +37,7 @@ from keras.layers import Dense, Activation
 from keras.models import Model
 from keras.preprocessing import image
 
-from fawkes.align_face import align
+from align_face import align
 from six.moves.urllib.request import urlopen
 
 if sys.version_info[0] == 2:
