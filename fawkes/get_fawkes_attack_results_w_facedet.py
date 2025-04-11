@@ -28,7 +28,7 @@ prefix = "TEST"
                 #     "cloaked_source_0.4.jpg", "cloaked_source_0.5.jpg"]
 necessary_files = []
 threshold = .88 # verilight decision threshold
-rhos = [0.005, 0.01, 0.04, 0.05, 0.1, 0.02, 0.03, 0.06, 0.07, 0.08, 0.09]
+rhos = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1]
 # usenix security results accidentally only considered [0.005, 0.01, 0.04, 0.05, 0.1]
 # because rhos was set to rhos = [0.005, 0.01, 0.04, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5], where 0.2, 0.3, 0.4, 0.5 aren't valid
 
@@ -115,12 +115,14 @@ def get_stats(rho):
 
 def aggregated_stats():
     """
-    Function used to get usenix security results. LR was 10 I believe. IMG_SIZE was 300.
-
     Group stats by resultant DSSIM rather than budget
     """
     res_dict = {}
-    res_dict['0.0-0.01'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
+    res_dict['0-0.002'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
+    res_dict['0.002-0.004'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
+    res_dict['0.004-0.006'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
+    res_dict['0.006-0.008'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
+    res_dict['0.008-0.01'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
     res_dict['0.01-0.02'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
     res_dict['0.02-0.03'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
     res_dict['0.03-0.04'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
@@ -133,7 +135,7 @@ def aggregated_stats():
     res_dict['greater'] = {'successes': 0, 'total': 0, 'whole_imgs_dissims': [], 'cropped_imgs_dissims': []}
     for rho in rhos:
         for attack_folder in attack_folders:
-            if "_TESTING.csv" in attack_folder:
+            if ".csv" in attack_folder:
                 continue
         
             source_path = attack_folder + "/source.jpg"
@@ -190,8 +192,16 @@ def aggregated_stats():
             cropped_source_cloak_dissim = (1 - cropped_source_cloak_ssim)/2
             
             dissim_bin = None
-            if cropped_source_cloak_dissim >= 0 and cropped_source_cloak_dissim <= 0.01:
-                dissim_bin = '0.0-0.01'
+            if cropped_source_cloak_ssim < 0.002:
+                dissim_bin = '0-0.002'
+            elif cropped_source_cloak_dissim >= 0.002 and cropped_source_cloak_dissim <= 0.004:
+                dissim_bin = '0.002-0.004'
+            elif cropped_source_cloak_dissim > 0.004 and cropped_source_cloak_dissim <= 0.006:
+                dissim_bin = '0.004-0.006'
+            elif cropped_source_cloak_dissim > 0.006 and cropped_source_cloak_dissim <= 0.008:
+                dissim_bin = '0.006-0.008'
+            elif cropped_source_cloak_dissim >= 0.008 and cropped_source_cloak_dissim <= 0.01:
+                dissim_bin = '0.008-0.01'
             elif cropped_source_cloak_dissim > 0.01 and cropped_source_cloak_dissim <= 0.02:
                 dissim_bin = '0.01-0.02'
             elif cropped_source_cloak_dissim > 0.02 and cropped_source_cloak_dissim <= 0.03:
@@ -213,7 +223,7 @@ def aggregated_stats():
             else:
                 dissim_bin = 'greater'
 
-            print(f"Bin: {dissim_bin}. Theta: {cloak_target_theta}")
+            print(f"Bin: {dissim_bin}. Theta: {cloak_target_theta} {attack_folder}")
             if source_target_theta < threshold:
                 continue # not a valid attack because source and target were already under the threshold
             if cloak_target_theta <  threshold:
@@ -223,7 +233,7 @@ def aggregated_stats():
             res_dict[dissim_bin]['whole_imgs_dissims'].append(source_cloak_dissim)
             res_dict[dissim_bin]['cropped_imgs_dissims'].append(cropped_source_cloak_dissim)
         
-        with open("aggregated_stats_temp_TESTING.csv", "w") as f:
+        with open("aggregated_stats_temp.csv", "w") as f:
             f.write('bin,succes_rate,successes,total,whole_imgs_dissim,cropped_imgs_dissim\n')
             for k, v in res_dict.items():
                 if v['total'] == 0:
@@ -233,7 +243,7 @@ def aggregated_stats():
                 f.write(f"{k},{success_rate},{v['successes']},{v['total']},{np.mean(v['whole_imgs_dissims'])},{np.mean(v['cropped_imgs_dissims'])}\n")
 
 
-    with open("aggregated_stats_TESTING.csv", "w") as f:
+    with open("aggregated_stats.csv", "w") as f:
         f.write('bin,succes_rate,successes,total,whole_imgs_dissim,cropped_imgs_dissim\n')
         for k, v in res_dict.items():
             if v['total'] == 0:
@@ -244,9 +254,7 @@ def aggregated_stats():
                 success_rate = v['successes']/v['total']
             f.write(f"{k},{success_rate},{v['successes']},{v['total']},{np.mean(v['whole_imgs_dissims'])},{np.mean(v['cropped_imgs_dissims'])}\n")
 
-# for rho in rhos:
-#     print(f"Rho: {rho}")
-#     get_stats(rho)
-#     print("\n")
-
-aggregated_stats()
+for rho in rhos:
+    print(f"Rho: {rho}")
+    get_stats(rho)
+    print("\n")

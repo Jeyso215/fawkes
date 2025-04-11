@@ -1,9 +1,6 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @Date    : 2020-05-17
-# @Author  : Shawn Shan (shansixiong@cs.uchicago.edu)
-# @Link    : https://www.shawnshan.com/
-
+"""
+Version of verilight_attacks_w_facedet.py for video instead of individual images
+"""
 import argparse
 import glob
 import logging
@@ -206,88 +203,53 @@ def run_test(perturbation_budget, results_directory):
     batch_size = 1 
     format = "jpeg"
     separate_target = True
-    debug = True
+    debug = False
     no_align = False
 
-    victim_directories = glob.glob(results_directory + "/*")
-    f = open(f"{results_directory}/cloaking_log.csv", "w")
+    attack_directories = glob.glob(results_directory + "/*")
+    attack_directories.sort() # sort for consistent ordering
+    f = open(f"{results_directory}/video_cloaking_log.csv", "w")
     f.write("source,target\n")
-    for dir in victim_directories:
-        if "log" in dir:
-            continue
-        source_img_path = dir + "/source.jpg"
+    for dir in attack_directories:
+
+        source_frames_path = dir + "/source_frames"
         target_img_path = dir + "/target.jpg"
         source_name = os.path.basename(dir).split("2")[0]
         target_name = os.path.basename(dir).split("2")[1]
-        source_img = cv2.imread(source_img_path)
 
-        if os.path.exists(f"{results_directory}/{source_name}2{target_name}/TEST_cloaked_source_{perturbation_budget}.jpg"):
+        if os.path.exists(f"{dir}/cloaked_frames_{perturbation_budget}"):
             continue
+        else:
+            os.makedirs(f"{dir}/cloaked_frames_{perturbation_budget}", exist_ok=True)
         
-        # create a new protector specific to this identity/experiment
-        protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
-
+        # perturb each source frame
         print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name} with rho {perturbation_budget}" + Style.RESET_ALL)
-        res = protector.run_protection(source_img_path, target_img_path, th=th, sd=sd, lr=lr,
-                            max_step=max_step,
-                            batch_size=batch_size, format=format,
-                            separate_target=separate_target, debug=debug, no_align=no_align)
-        if type(res) == int:
-            print("No face or more than one face detected. Skipping")
-            continue
-        protected_img = res
-        protected_img = protected_img[0]
-        protected_img = protected_img.astype(np.uint8)
-        protected_img = cv2.cvtColor(protected_img, cv2.COLOR_RGB2BGR)
-        original_source_size = source_img.shape[:2]
-        protected_img = cv2.resize(protected_img, (original_source_size[1], original_source_size[0]))
-        
-        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/TEST_cloaked_source_{perturbation_budget}.jpg", protected_img)
+        for i, source_img_path in enumerate(glob.glob(source_frames_path + "/*")):
+            # create a new protector specific to this identity/experiment
+            protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
+            res = protector.run_protection(source_img_path, target_img_path, th=th, sd=sd, lr=lr,
+                                max_step=max_step,
+                                batch_size=batch_size, format=format,
+                                separate_target=separate_target, debug=debug, no_align=no_align)
+            if type(res) == int:
+                print("No face or more than one face detected. Skipping")
+                continue
+            protected_img = res
+            protected_img = protected_img[0]
+            protected_img = protected_img.astype(np.uint8)
+            protected_img = cv2.cvtColor(protected_img, cv2.COLOR_RGB2BGR)
+            source_img = cv2.imread(source_img_path)
+            original_source_size = source_img.shape[:2]
+            protected_img = cv2.resize(protected_img, (original_source_size[1], original_source_size[0]))
+            
+            cv2.imwrite(f"{dir}/cloaked_frames_{perturbation_budget}/{i}.jpg", protected_img)
+
+            print("Processed frame ", i)
+
         f.write(f"{source_name},{target_name}\n")
         f.flush()
 
     f.close()
-
-    # protected_img = protector.run_protection(img_path, th=th, sd=sd, lr=lr,
-    #                          max_step=max_step,
-    #                          batch_size=batch_size, format=format,
-    #                          separate_target=separate_target, debug=debug, no_align=no_align)
-    # cv2.imshow("Protected Image", protected_img)
-    # cv2.waitKey(0)
-
-def perturb_single_img(img_path, target_img_path, perturbation_budget, results_directory):
-    feature_extractors = ["resnet_arcface"]
-    gpu = '0'
-    th = perturbation_budget 
-    max_step = 100
-    sd = 1e6
-    lr = 10
-    batch_size = 1 
-    format = "jpeg"
-    separate_target = True
-    debug = True
-    no_align = False
-    # create a new protector specific to this identity/experiment
-    protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
-
-    og_img_size = cv2.imread(img_path).shape[:2]
-    print(Fore.MAGENTA + f"Cloaking {img_path} to {target_img_path} with rho {perturbation_budget}" + Style.RESET_ALL)
-    res = protector.run_protection(img_path, target_img_path, th=th, sd=sd, lr=lr,
-                            max_step=max_step,
-                            batch_size=batch_size, format=format,
-                            separate_target=separate_target, debug=debug, no_align=no_align)
-    if res is None:
-        print("ERROR")
-
-    protected_img = res[0]
-    protected_img = protected_img.astype(np.uint8)
-    protected_img = cv2.cvtColor(protected_img, cv2.COLOR_RGB2BGR)
-    protected_img = cv2.resize(protected_img, (og_img_size[1], og_img_size[0]))
-    
-    if not os.path.exists(results_directory):
-        os.makedirs(results_directory)
-    
-    cv2.imwrite(f"{results_directory}/cloaked_source_{perturbation_budget}.jpg", protected_img)
 
 
 class ImageScorer():
@@ -333,3 +295,48 @@ class ImageScorer():
             print(f"Reference-OG {i} Angle (rad): {ref_prot_angle}")
 
 
+
+
+def prepare_videos():
+    """
+    Create frames from videos
+    """
+    video_paths = glob.glob("vox/videos/*")
+    for src_video_path in video_paths:
+        for tgt_video_path in video_paths:
+            src_video_name = os.path.basename(src_video_path)
+            tgt_video_name = os.path.basename(tgt_video_path)
+            if src_video_name == tgt_video_name:
+                continue
+            src_video_name = src_video_name.split(".")[0]
+            tgt_video_name = tgt_video_name.split(".")[0]
+            os.makedirs(f"vox/attack/{src_video_name}2{tgt_video_name}", exist_ok=True)
+            # randomly select a tgt frame
+            num_tgt_frames = cv2.VideoCapture(tgt_video_path).get(cv2.CAP_PROP_FRAME_COUNT)
+            tgt_frame_idx = np.random.randint(0, num_tgt_frames)
+            tgt_video = cv2.VideoCapture(tgt_video_path)
+            tgt_video.set(cv2.CAP_PROP_POS_FRAMES, tgt_frame_idx)
+            _, tgt_frame = tgt_video.read()
+            # save the tgt_frame in the attack directory
+            cv2.imwrite(f"vox/attack/{src_video_name}2{tgt_video_name}/target.jpg", tgt_frame)
+            # save the src frames in the attack directory
+            os.makedirs(f"vox/attack/{src_video_name}2{tgt_video_name}/source_frames", exist_ok=True)
+            src_cap = cv2.VideoCapture(src_video_path)
+            while True:
+                ret, frame = src_cap.read()
+                if not ret:
+                    break
+                cv2.imwrite(f"vox/attack/{src_video_name}2{tgt_video_name}/source_frames/{int(src_cap.get(cv2.CAP_PROP_POS_FRAMES))}.jpg", frame)
+            src_cap.release()
+            tgt_video.release()
+
+    # randomly delete all but 50 of the created attack directories
+    attack_dirs = glob.glob("vox/attack/*")
+    np.random.seed(42)
+    selected_dirs = np.random.choice(attack_dirs, 50, replace=False)
+    for dir in attack_dirs:
+        if dir not in selected_dirs:
+            os.system(f"rm -rf {dir}")
+           
+# prepare_videos()
+run_test(0.003, "vox/attack")

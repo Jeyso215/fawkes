@@ -50,7 +50,7 @@ class FawkesMaskGeneration:
     # max_val of image
     MAX_VAL = 255
     MAXIMIZE = False
-    IMAGE_SHAPE = (300, 300, 3)
+    IMAGE_SHAPE = (250, 250, 3)
     RATIO = 1.0
     LIMIT_DIST = False
     LOSS_TYPE = 'features'  # use features (original Fawkes) or gradients (Witches Brew) to run Fawkes?
@@ -156,8 +156,8 @@ class FawkesMaskGeneration:
             bottleneck_t = bottleneck_model(cur_timg_input)
             bottleneck_t = bottleneck_t / np.linalg.norm(bottleneck_t, axis=1, keepdims=True)
             bottleneck_diff = tf.math.acos(tf.tensordot(bottleneck_t, tf.transpose(bottleneck_a), axes=1))
-            if self.it == 1:
-                print("Starting bottleneck diff", bottleneck_diff)
+            # if self.it == 1:
+            #     print("Starting bottleneck diff", bottleneck_diff)
             # if bottleneck_diff < 1.21:
             #     print("Below threshold at", self.it, bottleneck_diff)
             #     STOP = True
@@ -185,7 +185,7 @@ class FawkesMaskGeneration:
             if self.it <= self.MAX_ITERATIONS:
                 loss = self.const * tf.square(input_space_loss) + 1000 * feature_space_loss # reduce coeff on feature_space_loss to allow DSSIM to have mrore impact
                 # here it looks like the lambda coefficient for controlling perceptibility, referenced in the paper
-                #  (in the equation that references applying penalty method to Eq 2)
+                # (in the equation that references applying penalty method to Eq 2)
                 # is actually refelected in the coefficient of feature_space_loss. Either way, it configures the trade-off.
                 # 100 is around the lowest I can get without the attack always failing because it prioritizes DSSIM too much.
 
@@ -198,12 +198,12 @@ class FawkesMaskGeneration:
         start_time = time.time()
         adv_imgs = []
         for idx in range(0, len(source_imgs), self.batch_size):
-            print('processing image %d at %s' % (idx + 1, datetime.datetime.now()))
+            # print('processing image %d at %s' % (idx + 1, datetime.datetime.now()))
             adv_img = self.compute_batch(source_imgs[idx:idx + self.batch_size],
                                          target_imgs[idx:idx + self.batch_size] if target_imgs is not None else None)
             adv_imgs.extend(adv_img)
         elapsed_time = time.time() - start_time
-        print('protection cost %f s' % elapsed_time)
+        # print('protection cost %f s' % elapsed_time)
         return np.array(adv_imgs)
 
     def compute_batch(self, source_imgs, target_imgs=None, retry=True):
