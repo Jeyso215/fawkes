@@ -13,7 +13,6 @@ Results
 
 """
 
-face_detector = YoloV5FaceDetector()
 im_scorer = ImageScorer()
 attack_directory = "vox/attack"
 attack_folders = glob.glob(attack_directory + "/*")

@@ -45,7 +45,50 @@ IMG_SIZE = 250
 PREPROCESS = 'raw'
 INPUT_PREPROCESS = 'resnet_arcface'
 
-    
+
+class ImageScorer():
+    def __init__(self):
+        # self.extractor = load_extractor(extractor_name)
+        # self.extractor = buildin_models("ResNet101V2", dropout=0.4, emb_shape=512, output_layer="E")
+        self.extractor = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
+        self.aligner = aligner()
+        yolo_detector = YoloV5FaceDetector()
+        rec_model = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
+        self.det_rec_model = DetRecModel(yolo_detector, rec_model)
+
+    def get_embedding(self, img_path):
+        # do exact same processing as done on images provided to Fawkes
+        img = cv2.imread(img_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+        img = np.array([img])
+        emb = self.det_rec_model.predict(img)
+        emb = emb.numpy()
+        emb = emb[0]
+        emb = emb / np.linalg.norm(emb) 
+        return emb
+
+    def score_images(self, og_img_path, protected_img_path, target_img_path, og_references = []):
+       
+        og_emb = self.get_embedding(og_img_path)
+        protected_emb = self.get_embedding(protected_img_path) # already saved the detected version
+        target_emb = self.get_embedding(target_img_path)
+        if og_emb is None or protected_emb is None or target_emb is None:
+            return
+        og_prot_cos_angle = np.arccos(np.dot(og_emb, protected_emb))
+        prot_target_angle = np.arccos(np.dot(protected_emb, target_emb))
+        og_target_angle = np.arccos(np.dot(og_emb, target_emb))
+        print(f"OG-Target Angle (rad): {og_target_angle}")
+        print(f"Cloaked-Target Angle (rad): {prot_target_angle}")
+        print(f"OG-Cloaked Angle (rad): {og_prot_cos_angle}")
+        for i, ref in enumerate(og_references):
+            ref_emb = self.get_embedding(ref)
+            if ref_emb is None:
+                continue
+            ref_prot_angle = np.arccos(np.dot(ref_emb, og_emb))
+            print(f"Reference-OG {i} Angle (rad): {ref_prot_angle}")
+
+
 class DetRecModel(object):
     """
     Only works with one image
@@ -197,9 +240,9 @@ def run_test(perturbation_budget, results_directory):
     feature_extractors = ["resnet_arcface"]
     gpu = '0'
     th = perturbation_budget 
-    max_step = 150
+    max_step = 1000
     sd = 1e6
-    lr = 15
+    lr = 0.5
     batch_size = 1 
     format = "jpeg"
     separate_target = True
@@ -210,6 +253,12 @@ def run_test(perturbation_budget, results_directory):
     attack_directories.sort() # sort for consistent ordering
     f = open(f"{results_directory}/video_cloaking_log.csv", "w")
     f.write("source,target\n")
+
+    protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
+
+    im_scorer = ImageScorer()
+    threshold = 0.88
+
     for dir in attack_directories:
 
         source_frames_path = dir + "/source_frames"
@@ -222,11 +271,19 @@ def run_test(perturbation_budget, results_directory):
         else:
             os.makedirs(f"{dir}/cloaked_frames_{perturbation_budget}", exist_ok=True)
         
+        if not os.path.exists(target_img_path):
+            print(f"{Fore.RED} Target image not found {Style.RESET_ALL}")
+            continue
+
+        target_emb = im_scorer.get_embedding(target_img_path)
+        frame_attack_log = open(f"{dir}/frame_attack_log_{perturbation_budget}.csv", "w")
+        frame_attack_log.write("frame,theta\n")
+        
         # perturb each source frame
         print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name} with rho {perturbation_budget}" + Style.RESET_ALL)
         for i, source_img_path in enumerate(glob.glob(source_frames_path + "/*")):
+        
             # create a new protector specific to this identity/experiment
-            protector = Fawkes(feature_extractors, gpu, batch_size, mode="custom", th=th, max_step=max_step, lr=lr) # custom allows us to specify our own DSSIM threshold 
             res = protector.run_protection(source_img_path, target_img_path, th=th, sd=sd, lr=lr,
                                 max_step=max_step,
                                 batch_size=batch_size, format=format,
@@ -241,61 +298,21 @@ def run_test(perturbation_budget, results_directory):
             source_img = cv2.imread(source_img_path)
             original_source_size = source_img.shape[:2]
             protected_img = cv2.resize(protected_img, (original_source_size[1], original_source_size[0]))
-            
-            cv2.imwrite(f"{dir}/cloaked_frames_{perturbation_budget}/{i}.jpg", protected_img)
+            cloak_path = f"{dir}/cloaked_frames_{perturbation_budget}/{i}.jpg"
+            cv2.imwrite(cloak_path, protected_img)
 
-            print("Processed frame ", i)
+            cloak_emb = im_scorer.get_embedding(cloak_path)
+            cloak_target_theta = np.arccos(np.dot(cloak_emb, target_emb))
+            frame_attack_log.write(f"{i},{cloak_target_theta}\n")
+            if cloak_target_theta >  threshold:
+                break
+
+         
 
         f.write(f"{source_name},{target_name}\n")
         f.flush()
 
     f.close()
-
-
-class ImageScorer():
-    def __init__(self):
-        # self.extractor = load_extractor(extractor_name)
-        # self.extractor = buildin_models("ResNet101V2", dropout=0.4, emb_shape=512, output_layer="E")
-        self.extractor = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
-        self.aligner = aligner()
-        yolo_detector = YoloV5FaceDetector()
-        rec_model = tf.keras.models.load_model("r50_magface_MS1MV2.h5", compile=False)
-        self.det_rec_model = DetRecModel(yolo_detector, rec_model)
-
-    def get_embedding(self, img_path):
-        # do exact same processing as done on images provided to Fawkes
-        img = cv2.imread(img_path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
-        img = np.array([img])
-        emb = self.det_rec_model.predict(img)
-        emb = emb.numpy()
-        emb = emb[0]
-        emb = emb / np.linalg.norm(emb) 
-        return emb
-
-    def score_images(self, og_img_path, protected_img_path, target_img_path, og_references = []):
-       
-        og_emb = self.get_embedding(og_img_path)
-        protected_emb = self.get_embedding(protected_img_path) # already saved the detected version
-        target_emb = self.get_embedding(target_img_path)
-        if og_emb is None or protected_emb is None or target_emb is None:
-            return
-        og_prot_cos_angle = np.arccos(np.dot(og_emb, protected_emb))
-        prot_target_angle = np.arccos(np.dot(protected_emb, target_emb))
-        og_target_angle = np.arccos(np.dot(og_emb, target_emb))
-        print(f"OG-Target Angle (rad): {og_target_angle}")
-        print(f"Cloaked-Target Angle (rad): {prot_target_angle}")
-        print(f"OG-Cloaked Angle (rad): {og_prot_cos_angle}")
-        for i, ref in enumerate(og_references):
-            ref_emb = self.get_embedding(ref)
-            if ref_emb is None:
-                continue
-            ref_prot_angle = np.arccos(np.dot(ref_emb, og_emb))
-            print(f"Reference-OG {i} Angle (rad): {ref_prot_angle}")
-
-
-
 
 def prepare_videos():
     """
@@ -339,4 +356,4 @@ def prepare_videos():
             os.system(f"rm -rf {dir}")
            
 # prepare_videos()
-run_test(0.004, "vox/attack")
+run_test(0.003, "vox/attack")
