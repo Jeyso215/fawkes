@@ -186,55 +186,7 @@ class Fawkes(object):
         protected_images = generate_cloak_images(self.protector, original_images, target_emb = target_images)
 
         return protected_images
-        
-
-def gen_identity_pairs(num_identities, results_directory):
- 
-    try:
-        import signal
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-    except Exception as e:
-        pass
-
-    lfw_root = "lfw"
-    lfw_identities = glob.glob(lfw_root + "/*")
-    candidate_identities = []
-    for identity in lfw_identities:
-        identity_img_paths = glob.glob(identity + "/*")
-        if len(identity_img_paths) >= 3:
-            candidate_identities.append(identity)
-    identity_pairs = []
-    for i in range(num_identities):
-        id1 = np.random.randint(0, len(candidate_identities))
-        id2 = np.random.randint(0, len(candidate_identities))
-        while id1 == id2:
-            id2 = np.random.randint(0, len(candidate_identities))
-        identity_pairs.append((candidate_identities[id1], candidate_identities[id2]))
-
-    os.makedirs(results_directory, exist_ok=True)
-
-    for identity_pair in identity_pairs:
-        source_img_paths = glob.glob(identity_pair[0] + "/*")
-        target_img_paths = glob.glob(identity_pair[1] + "/*")
-        source_name = os.path.basename(identity_pair[0])
-        target_name = os.path.basename(identity_pair[1])
-        # print("Processing ", identity_pair)
-
-        # randomly choose one of the images
-        source_img_path = np.random.choice(source_img_paths, 1, replace=False)[0]
-        target_img_path = np.random.choice(target_img_paths, 1, replace=False)[0]
-        
-        try:
-            source_img = cv2.imread(source_img_path)
-            target_img = cv2.imread(target_img_path)
-        except:
-            continue
-
-        # make directory
-        os.makedirs(f"{results_directory}/{source_name}2{target_name}", exist_ok=True)
-        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/source.jpg", source_img)
-        cv2.imwrite(f"{results_directory}/{source_name}2{target_name}/target.jpg", target_img)
-
+   
 def run_test(perturbation_budget, results_directory):
 
     feature_extractors = ["resnet_arcface"]
