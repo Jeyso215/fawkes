@@ -214,20 +214,25 @@ def run_test(perturbation_budget, results_directory):
 
     for dir in attack_directories:
 
+        if "video_cloaking_log" in dir:
+            continue
+
         source_frames_path = dir + "/source_frames"
         target_img_path = dir + "/target.jpg"
         source_name = os.path.basename(dir).split("2")[0]
         target_name = os.path.basename(dir).split("2")[1]
 
         if os.path.exists(f"{dir}/cloaked_frames_{perturbation_budget}"):
+            if "p12p3" in dir:
+                pass
             # if there are files in the cloaked_frames dir but the cloaking log is empty, we need to pick up
             # where we left off
-            cloaked_frames = glob.glob(f"{dir}/cloaked_frames_{perturbation_budget}/*")
-            if not os.path.exists(f"{dir}/frame_attack_log_{perturbation_budget}.csv"):
-                continue
-            cloaking_log_lines = open(f"{dir}/frame_attack_log_{perturbation_budget}.csv").readlines()
-            if len(cloaked_frames) > 0 and len(cloaking_log_lines) == 1:
-                print(f"{Fore.YELLOW} Cloaked frames already exist. Picking up where we left off {Style.RESET_ALL}")
+            # cloaked_frames = glob.glob(f"{dir}/cloaked_frames_{perturbation_budget}/*")
+            # if not os.path.exists(f"{dir}/frame_attack_log_{perturbation_budget}.csv"):
+            #     continue
+            # cloaking_log_lines = open(f"{dir}/frame_attack_log_{perturbation_budget}.csv").readlines()
+            # if len(cloaked_frames) > 0 and (len(cloaking_log_lines) == 1 or len(cloaking_log_lines) == 0):
+            #     print(f"{Fore.YELLOW} Cloaked frames already exist. Picking up where we left off {Style.RESET_ALL}")
         else:
             os.makedirs(f"{dir}/cloaked_frames_{perturbation_budget}", exist_ok=True)
         
