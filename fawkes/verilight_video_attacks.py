@@ -220,7 +220,12 @@ def run_test(perturbation_budget, results_directory):
         target_name = os.path.basename(dir).split("2")[1]
 
         if os.path.exists(f"{dir}/cloaked_frames_{perturbation_budget}"):
-            continue
+            # if there are files in the cloaked_frames dir but the cloaking log is empty, we need to pick up
+            # where we left off
+            cloaked_frames = glob.glob(f"{dir}/cloaked_frames_{perturbation_budget}/*")
+            cloaking_log_lines = open(f"{dir}/frame_attack_log_{perturbation_budget}.csv").readlines()
+            if len(cloaked_frames) > 0 and len(cloaking_log_lines) == 1:
+                print(f"{Fore.YELLOW} Cloaked frames already exist. Picking up where we left off {Style.RESET_ALL}")
         else:
             os.makedirs(f"{dir}/cloaked_frames_{perturbation_budget}", exist_ok=True)
         
@@ -235,6 +240,11 @@ def run_test(perturbation_budget, results_directory):
         # perturb each source frame
         print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name} with rho {perturbation_budget}" + Style.RESET_ALL)
         for i, source_img_path in enumerate(glob.glob(source_frames_path + "/*")):
+            # check if the cloaked frame already exists
+            if os.path.exists(f"{dir}/cloaked_frames_{perturbation_budget}/{i}.jpg"):
+                print(f"{Fore.YELLOW} Cloaked frame {i} already exists. Skipping {Style.RESET_ALL}")
+                continue
+
             print(Fore.MAGENTA + f"{dir} frame {i}" + Style.RESET_ALL)
             
             res = protector.run_protection(source_img_path, target_img_path, th=th, sd=sd, lr=lr,
@@ -244,6 +254,7 @@ def run_test(perturbation_budget, results_directory):
             if type(res) == int:
                 print("No face or more than one face detected. Skipping")
                 continue
+
             protected_img = res
             protected_img = protected_img[0]
             protected_img = protected_img.astype(np.uint8)
