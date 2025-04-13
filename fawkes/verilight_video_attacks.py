@@ -12,6 +12,7 @@ from tf_insightface import buildin_models
 from tf_yolo import YoloV5FaceDetector
 from colorama import Style, Fore
 import os, contextlib
+import argparse
 
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 os.environ["KMP_AFFINITY"] = "noverbose"
@@ -234,8 +235,8 @@ def run_test(perturbation_budget, results_directory):
         # perturb each source frame
         print(Fore.MAGENTA + f"Cloaking {source_name} to {target_name} with rho {perturbation_budget}" + Style.RESET_ALL)
         for i, source_img_path in enumerate(glob.glob(source_frames_path + "/*")):
-        
-            # create a new protector specific to this identity/experiment
+            print(Fore.MAGENTA + f"{dir} frame {i}" + Style.RESET_ALL)
+            
             res = protector.run_protection(source_img_path, target_img_path, th=th, sd=sd, lr=lr,
                                 max_step=max_step,
                                 batch_size=batch_size, format=format,
@@ -256,6 +257,7 @@ def run_test(perturbation_budget, results_directory):
             cloak_emb = im_scorer.get_embedding(cloak_path)
             cloak_target_theta = np.arccos(np.dot(cloak_emb, target_emb))
             frame_attack_log.write(f"{i},{cloak_target_theta}\n")
+            frame_attack_log.flush()
             if cloak_target_theta >  threshold:
                 break
 
@@ -308,4 +310,10 @@ def prepare_videos():
             os.system(f"rm -rf {dir}")
            
 # prepare_videos()
-run_test(0.003, "vox/attack")
+# run_test(0.003, "vox/attack")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--perturbation_budget", "-p", type=float)
+    args = parser.parse_args()
+    run_test(args.perturbation_budget, "vox/attack")
