@@ -223,6 +223,8 @@ def run_test(perturbation_budget, results_directory):
             # if there are files in the cloaked_frames dir but the cloaking log is empty, we need to pick up
             # where we left off
             cloaked_frames = glob.glob(f"{dir}/cloaked_frames_{perturbation_budget}/*")
+            if not os.path.exists(f"{dir}/frame_attack_log_{perturbation_budget}.csv"):
+                continue
             cloaking_log_lines = open(f"{dir}/frame_attack_log_{perturbation_budget}.csv").readlines()
             if len(cloaked_frames) > 0 and len(cloaking_log_lines) == 1:
                 print(f"{Fore.YELLOW} Cloaked frames already exist. Picking up where we left off {Style.RESET_ALL}")
