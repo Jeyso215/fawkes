@@ -21,7 +21,7 @@ cryptography @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/a
 cycler==0.12.1
 dill==0.3.8
 distro @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_ddkyz0575y/croot/distro_1714488254309/work
-filelock==3.16.1
+filelock==3.18.0
 fonttools==4.59.0
 frozendict @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_8b0cest_id/croot/frozendict_1713194839836/work
 frozenlist==1.5.0
