@@ -36,7 +36,7 @@ kiwisolver==1.4.7
 libmambapy @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_14wu5sk1ap/croot/mamba-split_1725563369022/work/libmambapy
 MarkupSafe==3.0.2
 menuinst @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_ad321a45td/croot/menuinst_1723567614652/work
-multidict==6.1.0
+multidict==6.6.3
 multiprocess==0.70.16
 packaging @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_81ri4yfpjw/croot/packaging_1720101866878/work
 pillow==11.0.0
