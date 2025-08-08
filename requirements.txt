@@ -43,7 +43,7 @@ pillow==11.0.0
 platformdirs @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/platformdirs_1701803010714/work
 pluggy @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/pluggy_1699237243543/work
 propcache==0.2.0
-pyarrow==18.0.0
+pyarrow==18.1.0
 pycosat @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_19qelmdbl6/croot/pycosat_1714510743067/work
 pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
 pyparsing==3.2.0
